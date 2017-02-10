@@ -1,0 +1,40 @@
+{ "name": "guess-js-deps-bash",
+  "version": "0.1.0",
+  "description": "A bash attempt at npm-forgot: Guess JavaScript require() dependencies, detect their versions, compare with package.json.",
+
+  "keywords": [
+    "guess",
+    "detect",
+    "require",
+    "dependencies",
+    "dependency",
+    "package.json",
+    "bash"
+  ],
+
+  "author": "M.K. (https://github.com/mk-pmb)",
+  "homepage": "https://github.com/mk-pmb/guess-js-deps-bash#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mk-pmb/guess-js-deps-bash.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mk-pmb/guess-js-deps-bash/issues"
+  },
+
+  "config": { "for_details": "see npm-config2env-datatypes-demo" },
+
+  "private": false, "license": "ISC",
+
+  "main": "capture-bash.js",
+  "bin": { "guess-js-deps": "guess-js-deps.sh" },
+  "scripts": { "test": "nodejs test/all.js" },
+  "directories": { "test": "test" },
+
+  "dependencies": {},
+  "devDependencies": {},
+  "optionalDependencies": {}, "peerDependencies": {}, "bundledDependencies": [],
+
+
+  "npm vs. BOM = Unexpected token": "-*- coding: UTF-8 -*-"
+}
