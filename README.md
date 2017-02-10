@@ -55,7 +55,7 @@ How about a diff?
 
 ```diff
 ~/lib/node_modules/usnam-pmb$ guess-js-deps
-@@ -1,5 +1,5 @@
+@@ -30,5 +30,5 @@
  "dependencies": {
    "clarify": "^2.0.0",
 -  "pretty-error": "^1.1.1"
@@ -64,7 +64,27 @@ How about a diff?
  "devDependencies": {
 ```
 
-Good catch, gonna update that one asap!
+Good catch, gonna update that one right away!
+
+```diff
+~/lib/node_modules/usnam-pmb$ guess-js-deps upd
+@@ -30,5 +30,5 @@
+   "dependencies": {
+     "clarify": "^2.0.0",
+-    "pretty-error": "^1.1.1"
++    "pretty-error": "^2.0.1"
+   },
+
+patching file package.json
+Using Plan A… Hunk #1 succeeded at 30.
+```
+
+Wow! Can you do that again?
+
+```diff
+~/lib/node_modules/usnam-pmb$ guess-js-deps upd
+Files known.deps and found.deps are identical
+```
 
 
 <!--#toc stop="scan" -->

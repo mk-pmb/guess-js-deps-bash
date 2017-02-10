@@ -10,18 +10,23 @@ function guess_js_deps () {
   #cd "$SELFPATH" || return $?
 
   local DBGLV="${DEBUGLEVEL:-0}"
+  local COLORIZE_DIFF="$(can_haz_cmd colordiff)"
+  local MANI_BFN='package.json'
   local KNOWN_DEP_TYPES=( dep devDep )
 
   local RUNMODE="$1"; shift
+  local OUTPUT_MODE=( fail 'Unsupported output mode. This is a bug.' )
   case "$RUNMODE" in
-    '' ) RUNMODE='cmp';;
-    as-json | cmp ) ;;
-    scan-known ) scan_manifest_deps; return $?;;
-    tabulate-known ) tabulate_manifest_deps; return $?;;
-    scan-requires ) find_requires_in_files "$@"; return $?;;
-    tabulate-found ) ;;
+    as-json ) OUTPUT_MODE=( dump_deps_as_json );;
+    '' | \
+    cmp )     OUTPUT_MODE=( compare_deps_as_json "$COLORIZE_DIFF" );;
+    upd )     OUTPUT_MODE=( update_manifest );;
+    tabulate-found )  OUTPUT_MODE=( 'fmt://tsv' );;
+    scan-known )      scan_manifest_deps; return $?;;
+    tabulate-known )  tabulate_manifest_deps; return $?;;
+    scan-requires )   find_requires_in_files "$@"; return $?;;
     --func ) "$@"; return $?;;
-    * ) echo "E: $0: unsupported runmode: $RUNMODE" >&2; return 2;;
+    * ) fail "unsupported runmode: $RUNMODE"; return 2;;
   esac
 
   local CWD_PKG_NAME="$(guess_cwd_pkg_name)"
@@ -30,12 +35,12 @@ function guess_js_deps () {
   readarray -t REQUIRES < <(fastfind -type f -name '*.js')
   progress "found ${#REQUIRES[@]}"
   [ -n "${REQUIRES[0]}" ] || return 3$(
-    echo "E: Unable to find any require()s in package: $CWD_PKG_NAME" >&2)
+    fail "Unable to find any require()s in package: $CWD_PKG_NAME")
 
   progress 'I: Searching for require()s in those files: '
   readarray -t REQUIRES < <(
     find_requires_in_files --guess-types "${REQUIRES[@]}")
-  if [ "$RUNMODE" == tabulate-found ]; then
+  if [ "${OUTPUT_MODE[0]}" == 'fmt://tsv' ]; then
     printf '%s\n' "${REQUIRES[@]}"
     return 0
   fi
@@ -46,15 +51,19 @@ function guess_js_deps () {
   [ "$DBGLV" -ge 2 ] && dump_dict DEPS_BY_TYPE | sed -re '
     s~^\S+~Found: &~;s~^~D: ~'
 
-  case "$RUNMODE" in
-    as-json )
-      dump_deps_as_json; return $?;;
-    cmp )
-      compare_deps_as_json; return $?;;
-  esac
+  "${OUTPUT_MODE[@]}"
+  return $?
+}
 
-  echo 'E: unexpectedly unsupported runmode!' >&2
-  return 5
+
+function can_haz_cmd () {
+  local CMD=
+  for CMD in "$@"; do
+    </dev/null "$CMD" &>/dev/null || continue
+    echo "$CMD"
+    return 0
+  done
+  return 2
 }
 
 
@@ -77,21 +86,67 @@ function dump_deps_as_json () {
 
 
 function compare_deps_as_json () {
+  local OUTPUT_FILTER=( "$@" )
+  [ -n "${OUTPUT_FILTER[*]}" ] || OUTPUT_FILTER=( cat )
+
   local SED_HRMNZ_JSON='
     s~(":\s*)undefined$~\1{}~
+    1!s~^"~\n\n\n\n\n\n"~
+    s~\S~  &~
     s~\}$~&,~
     s~(\{)(\},)$~\1\n\2~
     '
 
-  local COLORIZE=colordiff
-  </dev/null "$COLORIZE" &>/dev/null || COLORIZE=
+  local P_OFFSET="$(grep -nPe '^\s*\x22\w+endencies\x22:' -m 1 \
+    -- "$MANI_BFN" | grep -oPe '^\d+')"
+  [ -n "$P_OFFSET" ] && P_OFFSET='/^@@ /s~(\s[+-])[0-9]+~\1'"$P_OFFSET~g"
+  # P_OFFSET=
 
   diff -sU 2 --label known.deps --label found.deps <(scan_manifest_deps $(
     printf '%s\n' "${KNOWN_DEP_TYPES[@]}" | csort) | sed -re "$SED_HRMNZ_JSON"
     ) <(dump_deps_as_json | sed -re "$SED_HRMNZ_JSON") | sed -re '
     /^\-{3}\s/d
     /^\+{3}\s/d
-    ' | "${COLORIZE:-cat}"
+    '"$P_OFFSET" | "${OUTPUT_FILTER[*]}"
+  return $(math_sum "${PIPESTATUS[@]}")
+}
+
+
+function update_manifest () {
+  local P_DIFF="$(compare_deps_as_json | sed -re "$P_OFFSET"; echo :)"
+  P_DIFF="${P_DIFF%:}"
+  P_DIFF="${P_DIFF%$'\n'}"
+  "${COLORIZE_DIFF:-cat}" <<<"$P_DIFF"
+  case "$P_DIFF" in
+    '@@'* ) ;;
+    *' identical'* ) return 0;;
+    * ) fail 'failed to parse diff report.'; return 4;;
+  esac
+
+  local P_OPTS=(
+    --batch
+    --forward
+    --backup-if-mismatch
+    --fuzz=0
+    --reject-file=-   # discard
+    --suffix=.bak-$$
+    --unified
+    --verbose
+    # --dry-run
+    )
+
+  local P_HEAD=$'--- old/%\n+++ new/%\n'
+  P_HEAD="${P_HEAD//%/$MANI_BFN}"
+  patch "${P_OPTS[@]}" "$MANI_BFN" <(echo "$P_HEAD$P_DIFF") 2>&1 | sed -re '
+    1{
+      : buffer
+        /\n[Pp]atching /{s~^.*\n~~;b copy}
+      N;b buffer
+      : copy
+    }
+    /\.{3}\s*$/{N;s~\.{3,}~…~g;s~\s*\n~ ~}
+    /^[Dd]one\.?$/d
+    '
   return $?
 }
 
@@ -155,12 +210,18 @@ function progress () {
 
 function read_json_subtree () {
   local SRC_FN="$1"; shift
-  [ -n "$SRC_FN" ] || SRC_FN='package.json'
-  [ -s "$SRC_FN" ] || return 4$(echo "E: file not found: $SRC_FN" >&2)
+  [ -n "$SRC_FN" ] || SRC_FN="$MANI_BFN"
+  [ -s "$SRC_FN" ] || return 4$(fail "file not found: $SRC_FN")
   local SUBDOT="$1"; shift
   [ "${SRC_FN:0:1}" == / ] || SRC_FN="./$SRC_FN"
   SRCFN="$SRC_FN" nodejs -p '
     JSON.stringify(require(process.env.SRCFN)'"$SUBDOT, null, 2)"
+}
+
+
+function fail () {
+  echo "E: $*" >&2
+  return 2
 }
 
 
@@ -250,7 +311,7 @@ function guess_one_dep_type () {
 
   [ -n "$DEP_VER" ] || DEP_VER="$(nodejs -p '
     require(require.resolve(process.argv[1])).version
-    ' "$REQ_MOD/package.json")"
+    ' "$REQ_MOD/$MANI_BFN")"
 
   local SUBDIR=
   if [ "$DEP_TYPE" == dep ]; then
