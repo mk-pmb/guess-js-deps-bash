@@ -92,9 +92,9 @@ function compare_deps_as_json () {
   local SED_HRMNZ_JSON='
     s~(":\s*)undefined$~\1{}~
     1!s~^"~\n\n\n\n\n\n"~
-    s~\S~  &~
     s~\}$~&,~
     s~(\{)(\},)$~\1\n\2~
+    s~(^|\n)( *\S)~\1  \2~g
     '
 
   local P_OFFSET="$(grep -nPe '^\s*\x22\w+endencies\x22:' -m 1 \
@@ -107,6 +107,7 @@ function compare_deps_as_json () {
     ) <(dump_deps_as_json | sed -re "$SED_HRMNZ_JSON") | sed -re '
     /^\-{3}\s/d
     /^\+{3}\s/d
+    /^\s*$/d
     '"$P_OFFSET" | "${OUTPUT_FILTER[*]}"
   return $(math_sum "${PIPESTATUS[@]}")
 }
