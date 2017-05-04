@@ -251,7 +251,10 @@ function find_requires_in_files () {
   fi
   [ "$#" == 0 ] && return 0
   grep -HoPe 'require\([^()]+\)' -- "$@" | tr "'" '"' | sed -nre '
-    s~^(\./|)(\S+):require\("([^"]+)"\)$~\3\t\2~p'
+    s~^(\./|)(\S+):require\("([^"]+)"\)$~\3\t\2~p
+    ' | sed -re '
+    s~^([a-z0-9_-]+)/\S+\t~\1\t~
+    '
 }
 
 
