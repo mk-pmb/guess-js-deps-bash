@@ -94,7 +94,9 @@ Files known.deps and found.deps are identical
 Known issues
 ------------
 
-* needs more/better tests and docs
+* Needs more/better tests and docs.
+* Patch chunk size isn't adjusted when stripping whitespace,
+  thus creating invalid patches sometimes.
 
 
 

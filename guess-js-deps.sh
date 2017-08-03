@@ -91,7 +91,12 @@ function compare_deps_as_json () {
 
   local SED_HRMNZ_JSON='
     s~(":\s*)undefined$~\1{}~
-    1!s~^"~\n\n\n\n\n\n"~
+    1!{
+      s~^"~\f\f\n\n\n\r&~
+      #s~\f~//…\f…\n~g
+      # ^-- problem: patch chunk length changes if we lose a line
+      s~\f~\n~g
+    }
     s~\}$~&,~
     s~(\{)(\},)$~\1\n\2~
     s~(^|\n)( *\S)~\1  \2~g
@@ -102,9 +107,12 @@ function compare_deps_as_json () {
   [ -n "$P_OFFSET" ] && P_OFFSET='/^@@ /s~(\s[+-])[0-9]+~\1'"$P_OFFSET~g"
   # P_OFFSET=
 
-  diff -sU 2 --label known.deps --label found.deps <(scan_manifest_deps $(
-    printf '%s\n' "${KNOWN_DEP_TYPES[@]}" | csort) | sed -re "$SED_HRMNZ_JSON"
-    ) <(dump_deps_as_json | sed -re "$SED_HRMNZ_JSON") | sed -re '
+  diff -sU 2 --label known.deps --label found.deps <(
+    scan_manifest_deps $(printf '%s\n' "${KNOWN_DEP_TYPES[@]}" | csort
+      ) | sed -re "$SED_HRMNZ_JSON"
+    ) <(
+      dump_deps_as_json | sed -re "$SED_HRMNZ_JSON"
+    ) | sed -re '
     /^\-{3}\s/d
     /^\+{3}\s/d
     /^\s*$/d
