@@ -331,6 +331,11 @@ function guess_one_dep_type () {
     case "${SUBDIR%s}" in
       doc | demo | test ) DEP_TYPE=devDep;;
     esac
+    case "$REQ_FILE" in
+      */* ) ;;    # files in subdirs are handled above
+      # below: top-level files
+      test.* ) DEP_TYPE=devDep;;
+    esac
   fi
 
   echo -n "$DEP_TYPE"
