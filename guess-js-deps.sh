@@ -24,28 +24,34 @@ function guess_js_deps () {
     tabulate-found )  OUTPUT_MODE=( 'fmt://tsv' );;
     scan-known )      scan_manifest_deps; return $?;;
     tabulate-known )  tabulate_manifest_deps; return $?;;
-    scan-requires )   find_requires_in_files "$@"; return $?;;
+    scan-imports )   find_imports_in_files "$@"; return $?;;
     --func ) "$@"; return $?;;
     * ) fail "unsupported runmode: $RUNMODE"; return 2;;
   esac
 
   local CWD_PKG_NAME="$(guess_cwd_pkg_name)"
-  local REQUIRES=()
-  progress 'I: Searching for *.js files: '
-  readarray -t REQUIRES < <(fastfind -type f -name '*.js')
-  progress "found ${#REQUIRES[@]}"
-  [ -n "${REQUIRES[0]}" ] || return 3$(
-    fail "Unable to find any require()s in package: $CWD_PKG_NAME")
+  progress 'I: Searching for JavaScript files: '
+  local IMPORTS=(
+    -type f
+    '(' -name '*.js'
+        -o -name '*.jsm'
+        ')'
+    )
+  readarray -t IMPORTS < <(fastfind "${IMPORTS[@]}")
+  progress "found ${#IMPORTS[@]}"
+  [ -n "${IMPORTS[0]}" ] || return 3$(
+    fail "Unable to find any import()s/imports in package: $CWD_PKG_NAME")
 
-  progress 'I: Searching for require()s in those files: '
-  readarray -t REQUIRES < <(
-    find_requires_in_files --guess-types "${REQUIRES[@]}")
+  progress 'I: Searching for require()s/imports in those files: '
+  readarray -t IMPORTS < <(
+    find_imports_in_files --guess-types "${IMPORTS[@]}"
+    )
   if [ "${OUTPUT_MODE[0]}" == 'fmt://tsv' ]; then
-    printf '%s\n' "${REQUIRES[@]}"
+    printf '%s\n' "${IMPORTS[@]}"
     return 0
   fi
   local -A DEPS_BY_TYPE
-  dict_split_tsv_by_1st_column DEPS_BY_TYPE "${REQUIRES[@]}"
+  dict_split_tsv_by_1st_column DEPS_BY_TYPE "${IMPORTS[@]}"
   progress "found $(<<<"${DEPS_BY_TYPE[dep]}" grep . | wc -l) deps" \
     "and $(<<<"${DEPS_BY_TYPE[devDep]}" grep . | wc -l) devDeps."
   [ "$DBGLV" -ge 2 ] && dump_dict DEPS_BY_TYPE | sed -re '
@@ -251,16 +257,28 @@ function fastfind () {
 }
 
 
-function find_requires_in_files () {
+function find_imports_in_files () {
   if [ "$1" == --guess-types ]; then
     shift
     "$FUNCNAME" "$@" | csort -u | with_stdin_args guess_dep_types | csort -u
     return $(math_sum "${PIPESTATUS[@]}")
   fi
   [ "$#" == 0 ] && return 0
-  grep -HoPe 'require\([^()]+\)' -- "$@" | tr "'" '"' | sed -nre '
-    s~^(\./|)(\S+):require\("([^"]+)"\)$~\3\t\2~p
+  grep -HoPe '^\s*(import|\W*from)\s.*$|require\([^()]+\)' -- "$@" \
+    | tr "'" '"' | sed -nre '
+    s~\s+~ ~g
+    s~^(\./|)([^: ]+):~\2\t~
+    s~^(\S+)\trequire\("([^"]+)"\)$~\2\t\1~p
+    /^\S+\s+import/{
+      /"/!{$!N
+        s~^.*\n(\./|)([^: ]+):~\2 ~
+      }
+      s~\s+~ ~g
+      s~^(\S+ )import "~\1 from "~
+      s~^(\S+) (.* |)from "([^"]+)"[; ]*~\3\t\1~p
+    }
     ' | sed -re '
+    # remove paths from module IDs (mymodule/path/to/file.js)
     s~^([a-z0-9_-]+)/\S+\t~\1\t~
     '
 }
