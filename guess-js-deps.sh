@@ -304,7 +304,9 @@ function with_stdin_args () {
 
 
 function safe_pkg_names () {
-  local FLT=( grep -xPe '[a-z][a-z0-9_-]*' )
+  local RGX='(@<id>/|)<id>'
+  RGX="${RGX//<id>/[a-z][a-z0-9_-]*}"
+  local FLT=( grep -xPe "$RGX" )
   if [ "$#" == 0 ]; then
     "${FLT[@]}"
     return $?
