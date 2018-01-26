@@ -34,6 +34,7 @@ function guess_js_deps () {
   local IMPORTS=(
     -type f
     '(' -name '*.js'
+        -o -name '*.mjs'
         -o -name '*.jsm'
         ')'
     )
