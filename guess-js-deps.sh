@@ -21,17 +21,28 @@ function guess_js_deps () {
     '' | \
     cmp )     OUTPUT_MODE=( compare_deps_as_json "$COLORIZE_DIFF" );;
     upd )     OUTPUT_MODE=( update_manifest );;
+    sym )     OUTPUT_MODE=( symlink_nonlocal_node_modules );;
     tabulate-found )  OUTPUT_MODE=( 'fmt://tsv' );;
     scan-known )      scan_manifest_deps; return $?;;
     tabulate-known )  tabulate_manifest_deps; return $?;;
-    scan-imports )   find_imports_in_files "$@"; return $?;;
+    scan-imports )    find_imports_in_files "$@"; return $?;;
     --func ) "$@"; return $?;;
     * ) fail "unsupported runmode: $RUNMODE"; return 2;;
   esac
 
+  find_imports_in_project "${OUTPUT_MODE[@]}"
+  return 0
+}
+
+
+function find_imports_in_project () {
+  local THEN=( "$@" )
   local CWD_PKG_NAME="$(guess_cwd_pkg_name)"
   progress 'I: Searching for JavaScript files: '
-  local IMPORTS=(
+  local -A DEPS_BY_TYPE
+  local -A RESOLVE_CACHE
+  local IMPORTS=()
+  IMPORTS=(
     -type f
     '(' -name '*.js'
         -o -name '*.mjs'
@@ -47,18 +58,19 @@ function guess_js_deps () {
   readarray -t IMPORTS < <(
     find_imports_in_files --guess-types "${IMPORTS[@]}"
     )
+  progress 'done.'
   if [ "${OUTPUT_MODE[0]}" == 'fmt://tsv' ]; then
     printf '%s\n' "${IMPORTS[@]}"
     return 0
   fi
-  local -A DEPS_BY_TYPE
   dict_split_tsv_by_1st_column DEPS_BY_TYPE "${IMPORTS[@]}"
+  merge_redundant_devdeps
   progress "found $(<<<"${DEPS_BY_TYPE[dep]}" grep . | wc -l) deps" \
     "and $(<<<"${DEPS_BY_TYPE[devDep]}" grep . | wc -l) devDeps."
   [ "$DBGLV" -ge 2 ] && dump_dict DEPS_BY_TYPE | sed -re '
     s~^\S+~Found: &~;s~^~D: ~'
 
-  "${OUTPUT_MODE[@]}"
+  "${THEN[@]}"
   return $?
 }
 
@@ -74,9 +86,15 @@ function can_haz_cmd () {
 }
 
 
+function find_dep_keys_line_numbers () {
+  nl -ba -nln -w1 -s: -- "${1:-$MANI_BFN}" | sed -nre '
+    s~^([0-9]+):\s*\x22([a-z]*dep)endencies\x22:.*$~[\2]=\1~ip'
+}
+
+
 function dump_deps_as_json () {
   local DEP_TYPE=
-  for DEP_TYPE in "${KNOWN_DEP_TYPES[@]}"; do
+  for DEP_TYPE in "$@"; do
     printf '"%sendencies": ' "$DEP_TYPE"
     <<<"${DEPS_BY_TYPE[$DEP_TYPE]}" sed -re '
       1{${s~^$~{},~}}
@@ -89,6 +107,12 @@ function dump_deps_as_json () {
       }
       '
   done
+  [ -n "$DEP_TYPE" ] && return 0  # Feature: '' as last arg = add all known
+  for DEP_TYPE in "${KNOWN_DEP_TYPES[@]}"; do
+    [ -n "$DEP_TYPE" ] || continue
+    "$FUNCNAME" "$DEP_TYPE" || return $?
+  done
+  return 0
 }
 
 
@@ -96,48 +120,42 @@ function compare_deps_as_json () {
   local OUTPUT_FILTER=( "$@" )
   [ -n "${OUTPUT_FILTER[*]}" ] || OUTPUT_FILTER=( cat )
 
+  local DEP_TYPE=
   local SED_HRMNZ_JSON='
-    s~(":\s*)undefined$~\1{}~
-    1!{
-      s~^"~\f\f\n\n\n\r&~
-      #s~\f~//…\f…\n~g
-      # ^-- problem: patch chunk length changes if we lose a line
-      s~\f~\n~g
-    }
-    s~\}$~&,~
-    s~(\{)(\},)$~\1\n\2~
-    s~(^|\n)( *\S)~\1  \2~g
+    1s~\{\s*\}$~{\n}~
+    $s~\}$~&,~
+    s~^|\n~&  ~g
     '
 
-  local P_OFFSET="$(grep -nPe '^\s*\x22\w+endencies\x22:' -m 1 \
-    -- "$MANI_BFN" | grep -oPe '^\d+')"
-  [ -n "$P_OFFSET" ] && P_OFFSET='/^@@ /s~(\s[+-])[0-9]+~\1'"$P_OFFSET~g"
-  # P_OFFSET=
-
-  diff -sU 2 --label known.deps --label found.deps <(
-    scan_manifest_deps $(printf '%s\n' "${KNOWN_DEP_TYPES[@]}" | csort
-      ) | sed -re "$SED_HRMNZ_JSON"
-    ) <(
-      dump_deps_as_json | sed -re "$SED_HRMNZ_JSON"
-    ) | sed -re '
-    /^\-{3}\s/d
-    /^\+{3}\s/d
-    /^\s*$/d
-    '"$P_OFFSET" | "${OUTPUT_FILTER[*]}"
-  return $(math_sum "${PIPESTATUS[@]}")
+  eval local -A DEP_OFFSETS="( $(find_dep_keys_line_numbers) )"
+  local OFFS=
+  for DEP_TYPE in "${KNOWN_DEP_TYPES[@]}"; do
+    OFFS="${DEP_OFFSETS[$DEP_TYPE]}"
+    [ -n "$OFFS" ] && OFFS="$(head --bytes="$OFFS" /dev/zero | tr -c : :)"
+    OFFS="${OFFS%:}"
+    OFFS="${OFFS//:/$'\n'}"
+    diff -sU 1 --label known_"$DEP_TYPE"s <(
+      echo -n "$OFFS"
+      scan_manifest_deps "$DEP_TYPE" | sed -re "$SED_HRMNZ_JSON"
+      ) --label found_"$DEP_TYPE"s <(
+      echo -n "$OFFS"
+      dump_deps_as_json  "$DEP_TYPE" | sed -re "$SED_HRMNZ_JSON"
+      ) | sed -re '
+      1{/^\-{3} /d}
+      2{/^\+{3} /d}
+      /^@@ /s~$~ '"$DEP_TYPE"'s~'
+  done | "${OUTPUT_FILTER[@]}"
+  return 0
 }
 
 
 function update_manifest () {
-  local P_DIFF="$(compare_deps_as_json | sed -re "$P_OFFSET"; echo :)"
+  local P_DIFF="$(compare_deps_as_json; echo :)"
+  # The colon is to protect a trailing whitespace, which should be
+  # redundant in bash but it's too subtle a bug to risk it.
   P_DIFF="${P_DIFF%:}"
   P_DIFF="${P_DIFF%$'\n'}"
   "${COLORIZE_DIFF:-cat}" <<<"$P_DIFF"
-  case "$P_DIFF" in
-    '@@'* ) ;;
-    *' identical'* ) return 0;;
-    * ) fail 'failed to parse diff report.'; return 4;;
-  esac
 
   local P_OPTS=(
     --batch
@@ -153,7 +171,9 @@ function update_manifest () {
 
   local P_HEAD=$'--- old/%\n+++ new/%\n'
   P_HEAD="${P_HEAD//%/$MANI_BFN}"
-  patch "${P_OPTS[@]}" "$MANI_BFN" <(echo "$P_HEAD$P_DIFF") 2>&1 | sed -re '
+  patch "${P_OPTS[@]}" "$MANI_BFN" <(<<<"$P_HEAD$P_DIFF" sed -re '
+    /^Files .* are identical\.?$/d
+    ') 2>&1 | sed -re '
     1{
       : buffer
         /\n[Pp]atching /{s~^.*\n~~;b copy}
@@ -163,6 +183,12 @@ function update_manifest () {
     /\.{3}\s*$/{N;s~\.{3,}~…~g;s~\s*\n~ ~}
     /^[Dd]one\.?$/d
     '
+  return $?
+}
+
+
+function symlink_nonlocal_node_modules () {
+
   return $?
 }
 
@@ -189,12 +215,12 @@ function scan_manifest_deps () {
   local DEP_TYPE=
   for DEP_TYPE in "$@"; do
     printf '"%sendencies": ' "$DEP_TYPE"
-    read_json_subtree '' ."$DEP_TYPE"endencies || return $?
+    read_json_subtree '' ."$DEP_TYPE"'endencies || {}' || return $?
   done
   [ -n "$DEP_TYPE" ] && return 0  # Feature: '' as last arg = add all known
   for DEP_TYPE in "${KNOWN_DEP_TYPES[@]}"; do
     [ -n "$DEP_TYPE" ] || continue
-    "$FUNCNAME" "$DEP_TYPE" || return "$DEP_TYPE"
+    "$FUNCNAME" "$DEP_TYPE" || return $?
   done
   return 0
 }
@@ -205,7 +231,7 @@ function tabulate_manifest_deps () {
   local DEP_TYPE=
   for DEP_TYPE in "${KNOWN_DEP_TYPES[@]}"; do
     scan_manifest_deps "$DEP_TYPE" | sed -re '
-      /":\s+(\{|undefined)$/d
+      /^"[A-Za-z]+":\s*\{\}?$/d
       /^\s*\},?/d
       s~^\s*"([^"]+)":\s*"([^"]+)",?\s*$~'"$DEP_TYPE"'\t\1\t\2~
       '
@@ -243,6 +269,18 @@ function fail () {
 
 function lncnt () {
   [ -n "$1" ] && wc -l <<<"$1"
+}
+
+
+function node_resolve () {
+  MOD_NAME="$1" nodejs -p 'require.resolve(process.env.MOD_NAME)'
+}
+
+
+function node_detect_manif_version () {
+  # We can't easily cache the results here from the inside,
+  # because this function is meant to run in a subshell.
+  MANIF="$1/$MANI_BFN" nodejs -p 'require(process.env.MANIF).version'
 }
 
 
@@ -334,17 +372,26 @@ function guess_one_dep_type () {
   esac
 
 
-  [ "$DEP_TYPE" == dep ] && RESOLVED="$(nodejs -p '
-    require.resolve(process.argv[1])' "$REQ_MOD")"
+  if [ "$DEP_TYPE" == dep ]; then
+    RESOLVED="${RESOLVE_CACHE[$REQ_MOD?file]}"
+    if [ -z "$RESOLVED" ]; then
+      RESOLVED="$(node_resolve "$REQ_MOD")"
+      RESOLVE_CACHE["$REQ_MOD?file"]="$RESOLVED"
+    fi
+  fi
   if [ "$RESOLVED" == "$REQ_MOD" ]; then
     DEP_TYPE=built-in
     RESOLVED=''
     DEP_VER='*'
   fi
 
-  [ -n "$DEP_VER" ] || DEP_VER="$(nodejs -p '
-    require(require.resolve(process.argv[1])).version
-    ' "$REQ_MOD/$MANI_BFN")"
+  if [ -z "$DEP_VER" ]; then
+    DEP_VER="${RESOLVE_CACHE[$REQ_MOD?ver]}"
+    if [ -z "$DEP_VER" ]; then
+      DEP_VER="$(node_detect_manif_version "$REQ_MOD")"
+      RESOLVE_CACHE["$REQ_MOD?ver"]="$DEP_VER"
+    fi
+  fi
 
   local SUBDIR=
   if [ "$DEP_TYPE" == dep ]; then
@@ -367,11 +414,68 @@ function guess_one_dep_type () {
 }
 
 function guess_dep_types () {
+  local REQ_MOD=
+  local REQ_FILE=
   for REQ_MOD in "$@"; do
     REQ_FILE="${REQ_MOD##*$'\t'}"
     REQ_MOD="${REQ_MOD%$'\t'*}"
     guess_one_dep_type "$REQ_MOD" "$REQ_FILE" || return $?
   done
+  return 0
+}
+
+
+function merge_redundant_devdeps () {
+  # Assumption: If dupes exist, they will be exact (esp. same version)
+  # because we guessed those version anyway. (The source files didn't
+  # care about versions.)
+  # Thus we can just eliminate devDeps that are also deps:
+  DEPS_BY_TYPE[devDep]="$(
+    <<<"${DEPS_BY_TYPE[devDep]}" grep -vxFe "${DEPS_BY_TYPE[dep]}")"
+  return 0
+}
+
+
+function symlink_nonlocal_node_modules () {
+  local DEP_TYPE=
+  local DEP_LIST=()
+  for DEP_TYPE in "${KNOWN_DEP_TYPES[@]}"; do
+    DEP_LIST[0]+="${DEPS_BY_TYPE[$DEP_TYPE]}"$'\n'
+  done
+  readarray -t DEP_LIST < <( <<<"${DEP_LIST[0]}" cut -sf 1 | csort -u )
+  [ -n "${DEP_LIST[*]}" ] || return 0
+
+  local DEP_NAME=
+  local ABSPWD="$(readlink -m .)"
+  local M_RESO=
+  local M_CHK=
+  local M_UP=
+  local MOD_DIR='node_modules/'
+  mkdir --parents --verbose -- "$MOD_DIR"
+  for DEP_NAME in "${DEP_LIST[@]}"; do
+    [ -f "$MOD_DIR$DEP_NAME/$MANI_BFN" ] && continue
+    # if not in local node_modules, ascend:
+    M_RESO="$(node_resolve "$DEP_NAME/$MANI_BFN")"
+    M_RESO="${M_RESO%/*}"
+    M_CHK="$ABSPWD"
+    M_UP=
+    while [ -n "$M_CHK" ]; do
+      M_CHK="${M_CHK%/*}"
+      M_UP+='../'
+      case "$M_RESO" in
+        "$M_CHK"/* ) break;;
+      esac
+    done
+    case "$M_RESO" in
+      "$M_CHK"/* )
+        M_UP+="${M_RESO#$M_CHK/}"
+        ;;
+    esac
+    # echo "reso: $M_RESO"; echo "chk:  $M_CHK"; echo "up:   $M_UP"
+    ln --verbose --symbolic --no-target-directory \
+      -- ../"$M_UP" "$MOD_DIR$DEP_NAME"
+  done
+
   return 0
 }
 
