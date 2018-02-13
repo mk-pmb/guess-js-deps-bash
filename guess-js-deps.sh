@@ -100,7 +100,8 @@ function dump_deps_as_json () {
       1{${s~^$~{},~}}
       /\t/{
         s~^~  "~
-        s~\t~": "^~
+        s~(\t)([0-9])~\1^\2~
+        s~\t~": "~
         s~$~",~
         1s~^~{\n~
         $s~,$~\n},~
@@ -122,7 +123,7 @@ function compare_deps_as_json () {
 
   local DEP_TYPE=
   local SED_HRMNZ_JSON='
-    1s~\{\s*\}$~{\n}~
+    1s~(\{)\s*(\},?)$~\1\n\2~
     $s~\}$~&,~
     s~^|\n~&  ~g
     '
@@ -344,7 +345,7 @@ function with_stdin_args () {
 
 function safe_pkg_names () {
   local RGX='(@<id>/|)<id>'
-  RGX="${RGX//<id>/[a-z][a-z0-9_-]*}"
+  RGX="${RGX//<id>/[a-z](\.?[a-z0-9_-]+)*}"
   local FLT=( grep -xPe "$RGX" )
   if [ "$#" == 0 ]; then
     "${FLT[@]}"
@@ -375,7 +376,7 @@ function guess_one_dep_type () {
   if [ "$DEP_TYPE" == dep ]; then
     RESOLVED="${RESOLVE_CACHE[$REQ_MOD?file]}"
     if [ -z "$RESOLVED" ]; then
-      RESOLVED="$(node_resolve "$REQ_MOD")"
+      RESOLVED="$(node_resolve "$REQ_MOD" 2>/dev/null)"
       RESOLVE_CACHE["$REQ_MOD?file"]="$RESOLVED"
     fi
   fi
@@ -388,7 +389,8 @@ function guess_one_dep_type () {
   if [ -z "$DEP_VER" ]; then
     DEP_VER="${RESOLVE_CACHE[$REQ_MOD?ver]}"
     if [ -z "$DEP_VER" ]; then
-      DEP_VER="$(node_detect_manif_version "$REQ_MOD")"
+      DEP_VER="$(node_detect_manif_version "$REQ_MOD" 2>/dev/null)"
+      [ -n "$DEP_VER" ] || DEP_VER='?unknown?'
       RESOLVE_CACHE["$REQ_MOD?ver"]="$DEP_VER"
     fi
   fi
