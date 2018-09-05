@@ -317,7 +317,7 @@ function find_imports_in_files () {
       }
       s~\s+~ ~g
       s~^(\S+ )import "~\1 from "~
-      s~^(\S+) (.* |)from "([^"]+)"[; ]*~\3\t\1~p
+      s~^(\S+) (.* |)from "([^"]+)";?\s*(/[/*].*|)$~\3\t\1~p
     }
     ' | sed -re '
     # remove paths from module IDs (mymodule/path/to/file.js)
