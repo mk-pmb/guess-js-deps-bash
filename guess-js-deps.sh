@@ -304,13 +304,17 @@ function find_imports_in_files () {
     return $(math_sum "${PIPESTATUS[@]}")
   fi
   [ "$#" == 0 ] && return 0
-  LANG=C grep -HoPe '^(\xEF\xBB\xBF|)\s*'$(
+  LANG=C grep -HoPe '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
     )'(import|\W*from)\s.*$|require\([^()]+\)' -- "$@" \
-    | tr "'" '"' | LANG=C sed -nre '
+    | tr "'" '"' | LANG=C sed -re '
     s~\s+~ ~g
     s~^(\./|)([^: ]+):~\2\t~
     s~^(\S+\t)\xEF\xBB\xBF~\1~
+    ' | LANG=C sed -nre '
     s~^(\S+)\trequire\("([^"]+)"\)$~\2\t\1~p
+    /\t#!/{
+      s~^(\S+)\t#! *(/\S*\s*|)\b(nodemjs)\b(\s.*|)$~\3\t\1~p
+    }
     /^\S+\s+import/{
       /"/!{$!N
         s~^.*\n(\./|)([^: ]+):~\2 ~
