@@ -405,7 +405,10 @@ function guess_one_dep_type () {
   if [ "$DEP_TYPE" == dep ]; then
     SUBDIR="${REQ_FILE%%/*}"
     case "${SUBDIR%s}" in
-      doc | demo | test ) DEP_TYPE=devDep;;
+      build | \
+      demo | \
+      doc | \
+      test ) DEP_TYPE=devDep;;
     esac
     case "$REQ_FILE" in
       */* ) ;;    # files in subdirs are handled above
