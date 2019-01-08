@@ -467,6 +467,8 @@ function symlink_nonlocal_node_modules () {
     [ -f "$MOD_DIR$DEP_NAME/$MANI_BFN" ] && continue
     # if not in local node_modules, ascend:
     M_RESO="$(node_resolve "$DEP_NAME/$MANI_BFN")"
+    [ -f "$M_RESO" ] || return 4$(
+      echo "E: failed to resolve $DEP_NAME/$MANI_BFN" >&2)
     M_RESO="${M_RESO%/*}"
     M_CHK="$ABSPWD"
     M_UP=
