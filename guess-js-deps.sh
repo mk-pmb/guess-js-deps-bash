@@ -463,12 +463,16 @@ function symlink_nonlocal_node_modules () {
   local M_UP=
   local MOD_DIR='node_modules/'
   mkdir --parents --verbose -- "$MOD_DIR"
+  local DEP_MISS=()
   for DEP_NAME in "${DEP_LIST[@]}"; do
     [ -f "$MOD_DIR$DEP_NAME/$MANI_BFN" ] && continue
     # if not in local node_modules, ascend:
-    M_RESO="$(node_resolve "$DEP_NAME/$MANI_BFN")"
-    [ -f "$M_RESO" ] || return 4$(
-      echo "E: failed to resolve $DEP_NAME/$MANI_BFN" >&2)
+    M_RESO="$(node_resolve "$DEP_NAME/$MANI_BFN" 2>/dev/null)"
+    if [ ! -f "$M_RESO" ]; then
+      echo "W: failed to resolve $DEP_NAME/$MANI_BFN" >&2
+      DEP_MISS+=( "$DEP_NAME" )
+      continue
+    fi
     M_RESO="${M_RESO%/*}"
     M_CHK="$ABSPWD"
     M_UP=
@@ -489,7 +493,10 @@ function symlink_nonlocal_node_modules () {
       -- ../"$M_UP" "$MOD_DIR$DEP_NAME"
   done
 
-  return 0
+  if [ -n "${DEP_MISS[*]}" ]; then
+    echo "E: unresolved deps (n=${#DEP_MISS[@]}): ${DEP_MISS[*]}" >&2
+    return 4
+  fi
 }
 
 
