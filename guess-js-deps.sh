@@ -188,12 +188,6 @@ function update_manifest () {
 }
 
 
-function symlink_nonlocal_node_modules () {
-
-  return $?
-}
-
-
 function csort () {
   LANG=C sort "$@"; return $?
 }
@@ -325,7 +319,7 @@ function find_imports_in_files () {
     }
     ' | sed -re '
     # remove paths from module IDs (mymodule/path/to/file.js)
-    s~^([a-z0-9_-]+)/\S+\t~\1\t~
+    s~^((@[a-z0-9_-]+/|)([a-z0-9_-]+))/\S+\t~\1\t~
     '
 }
 
@@ -351,7 +345,7 @@ function with_stdin_args () {
 
 function safe_pkg_names () {
   local RGX='(@<id>/|)<id>'
-  RGX="${RGX//<id>/[a-z](\.?[a-z0-9_-]+)*}"
+  RGX="${RGX//<id>/[a-z](\.?[a-z0-9_-])*}"
   local FLT=( grep -xPe "$RGX" )
   if [ "$#" == 0 ]; then
     "${FLT[@]}"
