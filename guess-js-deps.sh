@@ -456,7 +456,7 @@ function symlink_nonlocal_node_modules () {
   local M_CHK=
   local M_UP=
   local MOD_DIR='node_modules/'
-  mkdir --parents --verbose -- "$MOD_DIR"
+  local DEST= LINK=
   local DEP_MISS=()
   for DEP_NAME in "${DEP_LIST[@]}"; do
     [ -f "$MOD_DIR$DEP_NAME/$MANI_BFN" ] && continue
@@ -483,8 +483,14 @@ function symlink_nonlocal_node_modules () {
         ;;
     esac
     # echo "reso: $M_RESO"; echo "chk:  $M_CHK"; echo "up:   $M_UP"
+    LINK="$MOD_DIR$DEP_NAME"
+    mkdir --parents --verbose -- "$(dirname "$LINK")"
+    DEST="$M_UP"
+    M_UP="${LINK//[^\/]/}"
+    M_UP="${M_UP//\//../}"
+    DEST="$M_UP$DEST"
     ln --verbose --symbolic --no-target-directory \
-      -- ../"$M_UP" "$MOD_DIR$DEP_NAME"
+      -- "$DEST" "$LINK" || return $?
   done
 
   if [ -n "${DEP_MISS[*]}" ]; then
