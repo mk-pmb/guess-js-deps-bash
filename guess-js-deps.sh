@@ -31,7 +31,6 @@ function guess_js_deps () {
   esac
 
   find_imports_in_project "${OUTPUT_MODE[@]}"
-  return 0
 }
 
 
@@ -39,8 +38,8 @@ function find_imports_in_project () {
   local THEN=( "$@" )
   local CWD_PKG_NAME="$(guess_cwd_pkg_name)"
   progress 'I: Searching for JavaScript files: '
-  local -A DEPS_BY_TYPE
-  local -A RESOLVE_CACHE
+  local -A DEPS_BY_TYPE=()
+  local -A RESOLVE_CACHE=()
   local IMPORTS=()
   IMPORTS=(
     -type f
@@ -70,8 +69,7 @@ function find_imports_in_project () {
   [ "$DBGLV" -ge 2 ] && dump_dict DEPS_BY_TYPE | sed -re '
     s~^\S+~Found: &~;s~^~D: ~'
 
-  "${THEN[@]}"
-  return $?
+  "${THEN[@]}"; return $?
 }
 
 
@@ -113,13 +111,15 @@ function dump_deps_as_json () {
     [ -n "$DEP_TYPE" ] || continue
     "$FUNCNAME" "$DEP_TYPE" || return $?
   done
-  return 0
 }
 
 
 function compare_deps_as_json () {
-  local OUTPUT_FILTER=( "$@" )
-  [ -n "${OUTPUT_FILTER[*]}" ] || OUTPUT_FILTER=( cat )
+  if [ -n "$*" ]; then
+    # output filter
+    "$FUNCNAME" | "$@"
+    return $?
+  fi
 
   local DEP_TYPE=
   local SED_HRMNZ_JSON='
@@ -145,8 +145,7 @@ function compare_deps_as_json () {
       1{/^\-{3} /d}
       2{/^\+{3} /d}
       /^@@ /s~$~ '"$DEP_TYPE"'s~'
-  done | "${OUTPUT_FILTER[@]}"
-  return 0
+  done
 }
 
 
@@ -217,7 +216,6 @@ function scan_manifest_deps () {
     [ -n "$DEP_TYPE" ] || continue
     "$FUNCNAME" "$DEP_TYPE" || return $?
   done
-  return 0
 }
 
 
@@ -390,7 +388,10 @@ function guess_one_dep_type () {
     DEP_VER="${RESOLVE_CACHE[$REQ_MOD?ver]}"
     if [ -z "$DEP_VER" ]; then
       DEP_VER="$(node_detect_manif_version "$REQ_MOD" 2>/dev/null)"
-      [ -n "$DEP_VER" ] || DEP_VER='?unknown?'
+      if [ -z "$DEP_VER" ]; then
+        DEP_VER='?unknown?'
+        RESOLVE_CACHE['?unknown?']+=" $REQ_MOD"
+      fi
       RESOLVE_CACHE["$REQ_MOD?ver"]="$DEP_VER"
     fi
   fi
@@ -426,7 +427,9 @@ function guess_dep_types () {
     REQ_MOD="${REQ_MOD%$'\t'*}"
     guess_one_dep_type "$REQ_MOD" "$REQ_FILE" || return $?
   done
-  return 0
+
+  local UNKN="${RESOLVE_CACHE['?unknown?']}"
+  [ -z "$UNKN" ] || echo "W: modules with unknown versions:$UNKN" >&2
 }
 
 
