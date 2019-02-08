@@ -22,10 +22,14 @@ function guess_js_deps () {
     cmp )     OUTPUT_MODE=( compare_deps_as_json "$COLORIZE_DIFF" );;
     upd )     OUTPUT_MODE=( update_manifest );;
     sym )     OUTPUT_MODE=( symlink_nonlocal_node_modules );;
+    manif )   read_json_subtree "$@"; return $?;;
     tabulate-found )  OUTPUT_MODE=( 'fmt://tsv' );;
     scan-known )      scan_manifest_deps; return $?;;
     tabulate-known )  tabulate_manifest_deps; return $?;;
-    scan-imports )    find_imports_in_files "$@"; return $?;;
+    scan-imports )
+      local -A RESOLVE_CACHE=()
+      find_imports_in_files "$@"
+      return $?;;
     --func ) "$@"; return $?;;
     * ) fail "unsupported runmode: $RUNMODE"; return 2;;
   esac
