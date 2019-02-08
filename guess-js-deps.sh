@@ -26,10 +26,7 @@ function guess_js_deps () {
     tabulate-found )  OUTPUT_MODE=( 'fmt://tsv' );;
     scan-known )      scan_manifest_deps; return $?;;
     tabulate-known )  tabulate_manifest_deps; return $?;;
-    scan-imports )
-      local -A RESOLVE_CACHE=()
-      find_imports_in_files "$@"
-      return $?;;
+    scan-imports )    find_imports_in_files "$@"; return $?;;
     --func ) "$@"; return $?;;
     * ) fail "unsupported runmode: $RUNMODE"; return 2;;
   esac
@@ -38,12 +35,19 @@ function guess_js_deps () {
 }
 
 
+function init_resolve_cache () {
+  # echo "D: ${FUNCNAME[*]}: <${!RESOLVE_CACHE[*]}>" >&2
+  [ -n "${!RESOLVE_CACHE[*]}" ] && return 0
+  echo "local -A RESOLVE_CACHE=( ['?canhaz?']=+ )"
+}
+
+
 function find_imports_in_project () {
   local THEN=( "$@" )
   local CWD_PKG_NAME="$(guess_cwd_pkg_name)"
   progress 'I: Searching for JavaScript files: '
   local -A DEPS_BY_TYPE=()
-  local -A RESOLVE_CACHE=()
+  eval "$(init_resolve_cache)"
   local IMPORTS=()
   IMPORTS=(
     -type f
@@ -57,11 +61,13 @@ function find_imports_in_project () {
   [ -n "${IMPORTS[0]}" ] || return 3$(
     fail "Unable to find any import()s/imports in package: $CWD_PKG_NAME")
 
-  progress 'I: Searching for require()s/imports in those files: '
-  readarray -t IMPORTS < <(
-    find_imports_in_files --guess-types "${IMPORTS[@]}"
-    )
+  progress 'I: Searching for require()s/imports: '
+  readarray -t IMPORTS < <( (
+    find_imports_in_files "${IMPORTS[@]}"
+    find_manif_script_deps
+    ) | guess_unique_stdin_dep_types)
   progress 'done.'
+
   if [ "${OUTPUT_MODE[0]}" == 'fmt://tsv' ]; then
     printf '%s\n' "${IMPORTS[@]}"
     return 0
@@ -74,6 +80,32 @@ function find_imports_in_project () {
     s~^\S+~Found: &~;s~^~D: ~'
 
   "${THEN[@]}"; return $?
+}
+
+
+function find_manif_script_deps () {
+  local ESLC='eslint-config-'
+  read_json_subtree '' .eslintConfig.extends | tr '",' '\n' | sed -nre '
+    s~^(\@[^/]+/|)('"$ESLC"'|)(\S+)$~\1'"$ESLC"'\3\tmanif://lint~p'
+
+  local SCRIPTS=()
+  readarray -t SCRIPTS < <(fastfind -name '*.sh')
+  ( </dev/null grep -HvPe '^\s*(#|$)' -- "${SCRIPTS[@]}"
+    read_json_subtree '' .scripts | sed -nre '
+      s~^\s*"([^"]+)": "~\v<manif>scripts/\1 ~p'
+  ) | sed -re '
+    s~^\./~~
+    s![\a\t\r]+! !g
+    s~\b(nodemjs|bower)\b~\a& ~g
+    /\a/{
+      /^\v/!s~:~\r~
+      s~^\v<(manif)>(\S+) ~\1://\2\r ~
+      s~^~\n~
+      : add_filename
+        s~(\n(\S+)\r)[^\a]*\a(\S+) ~\n\3\t\2\1 ~
+      t add_filename
+    }
+    ' | grep -Pe '\t'
 }
 
 
@@ -294,12 +326,8 @@ function fastfind () {
 
 
 function find_imports_in_files () {
-  if [ "$1" == --guess-types ]; then
-    shift
-    "$FUNCNAME" "$@" | csort -u | with_stdin_args guess_dep_types | csort -u
-    return $(math_sum "${PIPESTATUS[@]}")
-  fi
   [ "$#" == 0 ] && return 0
+  eval "$(init_resolve_cache)"
   LANG=C grep -HoPe '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
     )'(import|\W*from)\s.*$|require\([^()]+\)' -- "$@" \
     | tr "'" '"' | LANG=C sed -re '
@@ -374,7 +402,6 @@ function guess_one_dep_type () {
       ;;
   esac
 
-
   if [ "$DEP_TYPE" == dep ]; then
     RESOLVED="${RESOLVE_CACHE[$REQ_MOD?file]}"
     if [ -z "$RESOLVED" ]; then
@@ -410,6 +437,9 @@ function guess_one_dep_type () {
       test ) DEP_TYPE=devDep;;
     esac
     case "$REQ_FILE" in
+      manif://scripts/*lint* | \
+      manif://scripts/*test* | \
+      manif://lint ) DEP_TYPE=devDep;;
       */* ) ;;    # files in subdirs are handled above
       # below: top-level files
       test.* ) DEP_TYPE=devDep;;
@@ -423,7 +453,14 @@ function guess_one_dep_type () {
   echo
 }
 
+
+function guess_unique_stdin_dep_types () {
+  with_stdin_args guess_dep_types | csort -u
+}
+
+
 function guess_dep_types () {
+  eval "$(init_resolve_cache)"
   local REQ_MOD=
   local REQ_FILE=
   for REQ_MOD in "$@"; do
