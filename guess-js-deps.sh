@@ -1,13 +1,13 @@
 #!/bin/bash
 # -*- coding: utf-8, tab-width: 2 -*-
-SELFPATH="$(readlink -m "$BASH_SOURCE"/..)"; INVOKED_AS="$(basename "$0" .sh)"
-
-source "$SELFPATH"/lib_dict_util.sh --lib || exit $?
 
 
 function guess_js_deps () {
   export LANG{,UAGE}=en_US.UTF-8  # make error messages search engine-friendly
+
+  local SELFPATH="$(readlink -m "$BASH_SOURCE"/..)"
   #cd "$SELFPATH" || return $?
+  source "$SELFPATH"/lib_dict_util.sh --lib || exit $?
 
   local DBGLV="${DEBUGLEVEL:-0}"
   local COLORIZE_DIFF="$(can_haz_cmd colordiff)"
@@ -127,6 +127,7 @@ function find_dep_keys_line_numbers () {
 
 
 function dump_deps_as_json () {
+  local NUMBER_VERSION_PREFIX='^'
   local DEP_TYPE=
   for DEP_TYPE in "$@"; do
     printf '"%sendencies": ' "$DEP_TYPE"
@@ -134,7 +135,7 @@ function dump_deps_as_json () {
       1{${s~^$~{},~}}
       /\t/{
         s~^~  "~
-        s~(\t)([0-9])~\1^\2~
+        s~(\t)([0-9])~\1'"$NUMBER_VERSION_PREFIX"'\2~
         s~\t~": "~
         s~$~",~
         1s~^~{\n~
@@ -213,7 +214,8 @@ function update_manifest () {
     1{
       : buffer
         /\n[Pp]atching /{s~^.*\n~~;b copy}
-      N;b buffer
+        N
+      b buffer
       : copy
     }
     /\.{3}\s*$/{N;s~\.{3,}~…~g;s~\s*\n~ ~}
@@ -223,9 +225,7 @@ function update_manifest () {
 }
 
 
-function csort () {
-  LANG=C sort "$@"; return $?
-}
+function csort () { LANG=C sort "$@"; }
 
 
 function guess_cwd_pkg_name () {
@@ -290,15 +290,8 @@ function read_json_subtree () {
 }
 
 
-function fail () {
-  echo "E: $*" >&2
-  return 2
-}
-
-
-function lncnt () {
-  [ -n "$1" ] && wc -l <<<"$1"
-}
+function fail () { echo "E: $*" >&2; return 2; }
+function lncnt () { [ -n "$1" ] && wc -l <<<"$1"; }
 
 
 function node_resolve () {
@@ -309,7 +302,10 @@ function node_resolve () {
 function node_detect_manif_version () {
   # We can't easily cache the results here from the inside,
   # because this function is meant to run in a subshell.
-  MANIF="$1/$MANI_BFN" nodejs -p 'require(process.env.MANIF).version'
+  MANIF="$1/$MANI_BFN" nodejs -p '
+    var m = require(process.env.MANIF), iu = (m.npmInstallUrl || false);
+    (iu.default
+      || m.version)'
 }
 
 
@@ -394,8 +390,8 @@ function guess_one_dep_type () {
   local DEP_VER=
 
   case "$REQ_MOD" in
-    "$CWD_PKG_NAME" ) DEP_TYPE=self-ref; DEP_VER='*';;
-    . | ./* | .. | ../* ) DEP_TYPE=relPath; DEP_VER='*';;
+    "$CWD_PKG_NAME" ) DEP_TYPE='self-ref'; DEP_VER='*';;
+    . | ./* | .. | ../* ) DEP_TYPE='relPath'; DEP_VER='*';;
     * )
       [ -n "$(safe_pkg_names "$REQ_MOD")" ] || continue$(
         echo "W: skip dep: scary module name: $REQ_MOD" >&2)
