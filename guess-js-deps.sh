@@ -497,6 +497,8 @@ function symlink_nonlocal_node_modules () {
   local MOD_DIR='node_modules/'
   local MOD_SEARCH_DIRS=(
     "$HOME/.$MOD_DIR"
+    "$HOME/lib/$MOD_DIR"
+    "$HOME"
     )
   local DEST= LINK= LDIR_ABS=
   local DEP_MISS=()

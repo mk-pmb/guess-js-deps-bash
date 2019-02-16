@@ -24,7 +24,10 @@ function path_util__relativize_sanely () {
   local ABS_LCPP="$(path_util__common_prefix "$BASE" "$DEST")"
   # echo "D: ABS_LCPP='$ABS_LCPP'" >&2
   case "$ABS_LCPP" in
-    '' | /mnt ) return 3;;
+    /home | \
+    /media | \
+    /mnt | \
+    '' ) return 3;;
   esac
   BASE="${BASE#$ABS_LCPP/}"
   DEST="${DEST#$ABS_LCPP/}"
