@@ -8,6 +8,7 @@ function guess_js_deps () {
   local SELFPATH="$(readlink -m "$BASH_SOURCE"/..)"
   #cd "$SELFPATH" || return $?
   source "$SELFPATH"/lib_dict_util.sh --lib || exit $?
+  source "$SELFPATH"/lib_path_util.sh --lib || exit $?
 
   local DBGLV="${DEBUGLEVEL:-0}"
   local COLORIZE_DIFF="$(can_haz_cmd colordiff)"
@@ -85,7 +86,8 @@ function find_imports_in_project () {
 
 function find_manif_script_deps () {
   local ESLC='eslint-config-'
-  read_json_subtree '' .eslintConfig.extends | tr '",' '\n' | sed -nre '
+  read_json_subtree '' .eslintConfig.extends 2>/dev/null \
+    | tr '",' '\n' | sed -nre '
     s~^(\@[^/]+/|)('"$ESLC"'|)(\S+)$~\1'"$ESLC"'\3\tmanif://lint~p'
 
   local SCRIPTS=()
@@ -490,13 +492,13 @@ function symlink_nonlocal_node_modules () {
   readarray -t DEP_LIST < <( <<<"${DEP_LIST[0]}" cut -sf 1 | csort -u )
   [ -n "${DEP_LIST[*]}" ] || return 0
 
-  local DEP_NAME=
+  local DEP_NAME= M_RESO=
   local ABSPWD="$(readlink -m .)"
-  local M_RESO=
-  local M_CHK=
-  local M_UP=
   local MOD_DIR='node_modules/'
-  local DEST= LINK=
+  local MOD_SEARCH_DIRS=(
+    "$HOME/.$MOD_DIR"
+    )
+  local DEST= LINK= LDIR_ABS=
   local DEP_MISS=()
   for DEP_NAME in "${DEP_LIST[@]}"; do
     [ -f "$MOD_DIR$DEP_NAME/$MANI_BFN" ] && continue
@@ -507,28 +509,26 @@ function symlink_nonlocal_node_modules () {
       DEP_MISS+=( "$DEP_NAME" )
       continue
     fi
-    M_RESO="${M_RESO%/*}"
-    M_CHK="$ABSPWD"
-    M_UP=
-    while [ -n "$M_CHK" ]; do
-      M_CHK="${M_CHK%/*}"
-      M_UP+='../'
-      case "$M_RESO" in
-        "$M_CHK"/* ) break;;
-      esac
-    done
-    case "$M_RESO" in
-      "$M_CHK"/* )
-        M_UP+="${M_RESO#$M_CHK/}"
-        ;;
-    esac
-    # echo "reso: $M_RESO"; echo "chk:  $M_CHK"; echo "up:   $M_UP"
+    M_RESO="${M_RESO%/$MANI_BFN}"
+
     LINK="$MOD_DIR$DEP_NAME"
-    mkdir --parents --verbose -- "$(dirname "$LINK")"
-    DEST="$M_UP"
-    M_UP="${LINK//[^\/]/}"
-    M_UP="${M_UP//\//../}"
-    DEST="$M_UP$DEST"
+    LDIR_ABS="$ABSPWD/$(dirname "$LINK")"
+    [ "$(readlink -m -- "$LDIR_ABS")" == "$LDIR_ABS" ] || return 4$(
+      echo "E: flinching from stramhe path effects in $LDIR_ABS" >&2)
+    [ "$LDIR_ABS" == "$M_RESO" ] && return 3$(
+      echo "E: flinching from linking $M_RESO into itself" >&2)
+    mkdir --parents --verbose -- "$LDIR_ABS"
+    DEST="$(path_util__relativize_sanely "$M_RESO" "$LDIR_ABS")"
+    if [ -z "$DEST" ]; then
+      for DEST in "${MOD_SEARCH_DIRS[@]}"; do
+        DEST="${DEST%/}/$DEP_NAME"
+        [ "$(readlink -m -- "$DEST")" == "$M_RESO" ] && break
+        DEST=
+      done
+    fi
+    [ -n "$DEST" ] || DEST="$M_RESO"
+    # printf "D: %s='%s'\n" link "$LINK" dest "$DEST" reso "$M_RESO" >&2
+    # echo >&2 D:
     ln --verbose --symbolic --no-target-directory \
       -- "$DEST" "$LINK" || return $?
   done
@@ -538,6 +538,9 @@ function symlink_nonlocal_node_modules () {
     return 4
   fi
 }
+
+
+
 
 
 
