@@ -372,15 +372,30 @@ function with_stdin_args () {
 
 
 function safe_pkg_names () {
-  local RGX='(@<id>/|)<id>'
-  RGX="${RGX//<id>/[a-z](\.?[a-z0-9_-])*}"
-  local FLT=( grep -xPe "$RGX" )
-  if [ "$#" == 0 ]; then
-    "${FLT[@]}"
+  if [ "$#" -gt 0 ]; then
+    printf '%s\n' "$@" | "$FUNCNAME"
     return $?
   fi
-  printf '%s\n' "$@" | "${FLT[@]}"
-  return $?
+  local LN= PKG= ORG=
+  local ID_RGX='^[a-z][a-z0-9_.-]*$'
+  local RV=3
+  while read -r LN; do
+    PKG="$LN"
+    ORG=
+    case "$PKG" in
+      '' ) continue;;
+      @*/* )
+        ORG="${PKG%%/*}"
+        PKG="${PKG#*/}"
+        ORG="${ORG#\@}"
+        ;;
+    esac
+    [[ "$PKG" =~ $ID_RGX ]] || continue
+    [ -z "$ORG" ] || [[ "$ORG" =~ $ID_RGX ]] || continue
+    echo "$LN"
+    RV=0
+  done
+  return "$RV"
 }
 
 
