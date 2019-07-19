@@ -1,0 +1,14 @@
+# -*- coding: utf-8, tab-width: 2 -*-
+# This file will be sourced into guess-js-deps.sh; disguising it as
+# random text is to avoid mentioning them in *.sh, because g-js-d is
+# currently unable to guess whether a word in a shell script that looks
+# like a known, will actually be used as a command.
+
+local AUTOGUESS_SHEBANG_CMDS=(
+  nodemjs
+  )
+local AUTOGUESS_BUILD_UTIL_CMDS=(
+  "${AUTOGUESS_SHEBANG_CMDS[@]}"
+  bower
+  eslint
+  )

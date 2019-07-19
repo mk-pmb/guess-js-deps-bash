@@ -1,5 +1,5 @@
 { "name": "guess-js-deps-bash",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "A bash attempt at npm-forgot: Guess JavaScript require() dependencies, detect their versions, compare with package.json.",
 
   "keywords": [
@@ -21,8 +21,6 @@
   "bugs": {
     "url": "https://github.com/mk-pmb/guess-js-deps-bash/issues"
   },
-
-  "config": { "for_details": "see npm-config2env-datatypes-demo" },
 
   "private": false, "license": "ISC",
 

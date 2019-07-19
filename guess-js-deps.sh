@@ -10,6 +10,9 @@ function guess_js_deps () {
   source "$SELFPATH"/lib_dict_util.sh --lib || exit $?
   source "$SELFPATH"/lib_path_util.sh --lib || exit $?
 
+  # import AUTOGUESS_SHEBANG_CMDS and AUTOGUESS_BUILD_UTIL_CMDS:
+  source "$SELFPATH"/autoguess_config.txt --lib || exit $?
+
   local DBGLV="${DEBUGLEVEL:-0}"
   local COLORIZE_DIFF="$(can_haz_cmd colordiff)"
   local MANI_BFN='package.json'
@@ -92,13 +95,14 @@ function find_manif_script_deps () {
 
   local SCRIPTS=()
   readarray -t SCRIPTS < <(fastfind -name '*.sh')
-  ( </dev/null grep -HvPe '^\s*(#|$)' -- "${SCRIPTS[@]}"
+  ( </dev/null grep -HvPe '^\s*(#[^!]|$)' -- "${SCRIPTS[@]}"
     read_json_subtree '' .scripts | sed -nre '
       s~^\s*"([^"]+)": "~\v<manif>scripts/\1 ~p'
-  ) | sed -re '
+  ) | sed -nre '
     s~^\./~~
     s![\a\t\r]+! !g
-    s~\b(nodemjs|bower)\b~\a& ~g
+    s~\b($bogus^'"$(printf '|%s' "${AUTOGUESS_BUILD_UTIL_CMDS[@]}"
+      )"')([$ &|()<>]|$|\x22|\x27)~\a\1 ~gp
     /\a/{
       /^\v/!s~:~\r~
       s~^\v<(manif)>(\S+) ~\1://\2\r ~
@@ -106,6 +110,8 @@ function find_manif_script_deps () {
       : add_filename
         s~(\n(\S+)\r)[^\a]*\a(\S+) ~\n\3\t\2\1 ~
       t add_filename
+      s~\n[^\n\t]+$~~
+      p
     }
     ' | grep -Pe '\t'
 }
@@ -326,17 +332,20 @@ function fastfind () {
 function find_imports_in_files () {
   [ "$#" == 0 ] && return 0
   eval "$(init_resolve_cache)"
-  LANG=C grep -HoPe '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
+  LANG=C grep -PHone '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
     )'(import|\W*from)\s.*$|require\([^()]+\)' -- "$@" \
     | tr "'" '"' | LANG=C sed -re '
     s~\s+~ ~g
     s~^(\./|)([^: ]+):~\2\t~
     s~^(\S+\t)\xEF\xBB\xBF~\1~
     ' | LANG=C sed -nre '
-    s~^(\S+)\trequire\("([^"]+)"\)$~\2\t\1~p
-    /\t#!/{
-      s~^(\S+)\t#! *(/\S*\s*|)\b(nodemjs)\b(\s.*|)$~\3\t\1~p
+    /\t1:#!/{
+      s~^(\S+)\t#! *(/\S*\s*|)\b($bogus^'"$(
+        printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"
+        )"')\b(\s.*|)$~\3\t\1~p
     }
+    s~\t[0-9]:~\t~  # other match types work w/o line numbers.
+    s~^(\S+)\trequire\("([^"]+)"\)$~\2\t\1~p
     /^\S+\s+import/{
       /"/!{$!N
         s~^.*\n(\./|)([^: ]+):~\2 ~
