@@ -27,10 +27,12 @@ function guess_js_deps () {
     upd )     OUTPUT_MODE=( update_manifest );;
     sym )     OUTPUT_MODE=( symlink_nonlocal_node_modules );;
     manif )   read_json_subtree "$@"; return $?;;
-    tabulate-found )  OUTPUT_MODE=( 'fmt://tsv' );;
-    scan-known )      scan_manifest_deps; return $?;;
-    tabulate-known )  tabulate_manifest_deps; return $?;;
     scan-imports )    find_imports_in_files "$@"; return $?;;
+    scan-known )      scan_manifest_deps; return $?;;
+    scan-manif )      find_manif_script_deps "$@"; return $?;;
+    scan-eslint-cfg ) find_manif_eslint_deps "$@"; return $?;;
+    tabulate-found )  OUTPUT_MODE=( 'fmt://tsv' );;
+    tabulate-known )  tabulate_manifest_deps; return $?;;
     --func ) "$@"; return $?;;
     * ) fail "unsupported runmode: $RUNMODE"; return 2;;
   esac
@@ -69,6 +71,7 @@ function find_imports_in_project () {
   readarray -t IMPORTS < <( (
     find_imports_in_files "${IMPORTS[@]}"
     find_manif_script_deps
+    find_manif_eslint_deps
     ) | guess_unique_stdin_dep_types)
   progress 'done.'
 
@@ -88,11 +91,6 @@ function find_imports_in_project () {
 
 
 function find_manif_script_deps () {
-  local ESLC='eslint-config-'
-  read_json_subtree '' .eslintConfig.extends 2>/dev/null \
-    | tr '",' '\n' | sed -nre '
-    s~^(\@[^/]+/|)('"$ESLC"'|)(\S+)$~\1'"$ESLC"'\3\tmanif://lint~p'
-
   local SCRIPTS=()
   readarray -t SCRIPTS < <(fastfind -name '*.sh')
   ( </dev/null grep -HvPe '^\s*(#[^!]|$)' -- "${SCRIPTS[@]}"
@@ -114,6 +112,26 @@ function find_manif_script_deps () {
       p
     }
     ' | grep -Pe '\t'
+}
+
+
+function find_manif_eslint_deps () {
+  local GUESS_LONG_PKGNAMES='
+    /\S/!d
+    /^eslint:/d
+    s~^([a-z]+:|)(\@[^/]+/|)~\a<user>\2 \a<mode>\1 \a<esl>~
+    s~\a<mode>(plugin): (\a<esl>)(eslint-plugin-|)~\2eslint-\1-~
+    s~\a<mode> ~~
+
+    s~\a<esl>(eslint-)~\a<pkg>\1~
+    s~\a<esl>~\a<pkg>eslint-config-~
+    s~(\a<pkg>[^/]+)/\S+~\1~
+    s~\a<user>(\S*) \a<pkg>~\1~
+
+    s~$~\tmanif://lint~
+    '
+  read_json_subtree '' .eslintConfig.extends 2>/dev/null \
+    | tr '",[]' '\n' | sed -rf <(echo "$GUESS_LONG_PKGNAMES")
 }
 
 
