@@ -6,7 +6,7 @@ function guess_js_deps () {
   export LANG{,UAGE}=en_US.UTF-8  # make error messages search engine-friendly
 
   local SELFPATH="$(readlink -m "$BASH_SOURCE"/..)"
-  #cd "$SELFPATH" || return $?
+  #cd -- "$SELFPATH" || return $?
   source "$SELFPATH"/lib_dict_util.sh --lib || exit $?
   source "$SELFPATH"/lib_path_util.sh --lib || exit $?
 
@@ -121,22 +121,11 @@ function find_manif_script_deps () {
 
 
 function find_manif_eslint_deps () {
-  local GUESS_LONG_PKGNAMES='
-    /\S/!d
-    /^eslint:/d
-    s~^([a-z]+:|)(\@[^/]+/|)~\a<user>\2 \a<mode>\1 \a<esl>~
-    s~\a<mode>(plugin): (\a<esl>)(eslint-plugin-|)~\2eslint-\1-~
-    s~\a<mode> ~~
-
-    s~\a<esl>(eslint-)~\a<pkg>\1~
-    s~\a<esl>~\a<pkg>eslint-config-~
-    s~(\a<pkg>[^/]+)/\S+~\1~
-    s~\a<user>(\S*) \a<pkg>~\1~
-
-    s~$~\tmanif://lint~
-    '
-  read_json_subtree '' .eslintConfig.extends 2>/dev/null \
-    | tr '",[]' '\n' | sed -rf <(echo "$GUESS_LONG_PKGNAMES")
+  local ESLC="$SELFPATH"/eslint_cfg_
+  ( read_json_subtree '' .eslintConfig.extends
+    "$ESLC"scan_deps.sed .eslintrc.yaml
+  ) 2>/dev/null | tr '",[]' '\n' \
+    | sed -rf "$ESLC"guess_long_pkgnames.sed -e 's~$~\tmanif://lint~'
 }
 
 
