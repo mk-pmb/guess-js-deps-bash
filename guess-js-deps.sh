@@ -362,7 +362,7 @@ function find_imports_in_files () {
         printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"
         )"')\b(\s.*|)$~\3\t\1~p
     }
-    s~\t[0-9]:~\t~  # other match types work w/o line numbers.
+    s~\t[0-9]+:~\t~  # other match types work w/o line numbers.
     s~^(\S+)\trequire\("([^"]+)"\)$~\2\t\1~p
     /^\S+\s+import/{
       /"/!{$!N
