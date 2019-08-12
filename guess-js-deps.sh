@@ -26,6 +26,11 @@ function guess_js_deps () {
     cmp )     OUTPUT_MODE=( compare_deps_as_json "$COLORIZE_DIFF" );;
     upd )     OUTPUT_MODE=( update_manifest );;
     sym )     OUTPUT_MODE=( symlink_nonlocal_node_modules );;
+    usy )
+      OUTPUT_MODE=( output_multi
+        update_manifest
+        symlink_nonlocal_node_modules
+      );;
     manif )   read_json_subtree "$@"; return $?;;
     scan-imports )    find_imports_in_files "$@"; return $?;;
     scan-known )      scan_manifest_deps; return $?;;
@@ -174,6 +179,16 @@ function dump_deps_as_json () {
     [ -n "$DEP_TYPE" ] || continue
     "$FUNCNAME" "$DEP_TYPE" || return $?
   done
+}
+
+
+function output_multi () {
+  local FUNC= RV= MAX_ERR=0
+  for FUNC in "$@"; do
+    "$FUNC"; RV=$?
+    [ "$RV" -gt "$MAX_ERR" ] && MAX_ERR="$RV"
+  done
+  return "$MAX_ERR"
 }
 
 
