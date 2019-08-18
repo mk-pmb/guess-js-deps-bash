@@ -116,7 +116,10 @@ function find_manif_script_deps () {
       s~\n[^\n\t]+$~~
       p
     }
-    ' | grep -Pe '\t'
+    ' | sed -re '
+    /\t/!d
+    s~^(demo-util-160404)-test-demos(\tmanif:)~lib-\1\2~
+    '
 }
 
 

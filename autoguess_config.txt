@@ -10,5 +10,6 @@ local AUTOGUESS_SHEBANG_CMDS=(
 local AUTOGUESS_BUILD_UTIL_CMDS=(
   "${AUTOGUESS_SHEBANG_CMDS[@]}"
   bower
+  demo-util-160404-test-demos
   eslint
   )
