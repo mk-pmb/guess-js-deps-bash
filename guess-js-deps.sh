@@ -479,6 +479,7 @@ function guess_one_dep_type () {
     SUBDIR="${REQ_FILE%%/*}"
     case "${SUBDIR%s}" in
       build | \
+      debug | \
       demo | \
       doc | \
       test ) DEP_TYPE=devDep;;
