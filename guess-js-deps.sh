@@ -23,7 +23,7 @@ function guess_js_deps () {
   case "$RUNMODE" in
     as-json ) OUTPUT_MODE=( dump_deps_as_json );;
     '' | \
-    cmp )     OUTPUT_MODE=( compare_deps_as_json "$COLORIZE_DIFF" );;
+    cmp )     OUTPUT_MODE=( maybe_colorize_diff compare_deps_as_json );;
     upd )     OUTPUT_MODE=( update_manifest );;
     sym )     OUTPUT_MODE=( symlink_nonlocal_node_modules );;
     usy )
@@ -43,6 +43,12 @@ function guess_js_deps () {
   esac
 
   find_imports_in_project "${OUTPUT_MODE[@]}"
+}
+
+
+function maybe_colorize_diff () {
+  [ -z "$*" ] || exec < <("$@")
+  "${COLORIZE_DIFF:-cat}"
 }
 
 
@@ -144,8 +150,19 @@ function can_haz_cmd () {
 
 
 function find_dep_keys_line_numbers () {
-  nl -ba -nln -w1 -s: -- "${1:-$MANI_BFN}" | sed -nre '
-    s~^([0-9]+):\s*\x22([a-z]*dep)endencies\x22:.*$~[\2]=\1~ip'
+  LANG=C sed -nrf <(echo '
+    s~^\s*"([a-z]*dep)endencies"(\s*:)~\1\n\2~i
+    /\n/{
+      s~^(\S+)\n([:{}, \t\r]*).*$~[\1:empty]="\2"\n[\1]=\a~
+      p
+      =
+    }') -- "${1:-$MANI_BFN}" | LANG=C sed -rf <(echo '
+      /:empty]="/{
+        /\]=""$/d
+        /\}/!d
+      }
+      /=\a$/{N;s~\a\n~~}
+    ')
 }
 
 
@@ -184,48 +201,73 @@ function output_multi () {
 }
 
 
-function compare_deps_as_json () {
-  if [ -n "$*" ]; then
-    # output filter
-    "$FUNCNAME" | "$@"
-    return $?
-  fi
-
-  local DEP_TYPE=
-  local SED_HRMNZ_JSON='
+function sed_hrmnz_json () {
+  LANG=C sed -re '
     1s~(\{)\s*(\},?)$~\1\n\2~
     $s~\}$~&,~
     s~^|\n~&  ~g
     '
+}
+
+
+function compare_deps_as_json () {
+  local VERBATIM_EMPTY_ORIG=
+  case "$1" in
+    '' ) ;;
+    --empty-orig=verbatim ) VERBATIM_EMPTY_ORIG=+;;
+    * ) echo "E: $FUNCNAME: invalid option: '$1'" >&2; return 8;;
+  esac
 
   eval local -A DEP_OFFSETS="( $(find_dep_keys_line_numbers) )"
-  local OFFS=
+
+  local DEP_TYPE=
   for DEP_TYPE in "${KNOWN_DEP_TYPES[@]}"; do
-    OFFS="${DEP_OFFSETS[$DEP_TYPE]}"
-    [ -n "$OFFS" ] && OFFS="$(head --bytes="$OFFS" /dev/zero | tr -c : :)"
-    OFFS="${OFFS%:}"
-    OFFS="${OFFS//:/$'\n'}"
-    diff -sU 1 --label known_"$DEP_TYPE"s <(
-      echo -n "$OFFS"
-      scan_manifest_deps "$DEP_TYPE" | sed -re "$SED_HRMNZ_JSON"
-      ) --label found_"$DEP_TYPE"s <(
-      echo -n "$OFFS"
-      dump_deps_as_json  "$DEP_TYPE" | sed -re "$SED_HRMNZ_JSON"
-      ) | sed -re '
-      1{/^\-{3} /d}
-      2{/^\+{3} /d}
-      /^@@ /s~$~ '"$DEP_TYPE"'s~'
+    compare_deps_as_json__one_dep_type || return $?
   done
 }
 
 
+function compare_deps_as_json__one_dep_type () {
+  local OFFS="${DEP_OFFSETS[$DEP_TYPE]}"
+  local OLD_JSON="$(scan_manifest_deps "$DEP_TYPE" | sed_hrmnz_json)"
+  local UPD_JSON="$(dump_deps_as_json  "$DEP_TYPE" | sed_hrmnz_json)"
+  if [ "$OLD_JSON" == "$UPD_JSON" ]; then
+    echo "D: no changes in ${DEP_TYPE}s"
+    return 0
+  fi
+
+  local EMPTY="${DEP_OFFSETS[$DEP_TYPE:empty]}"
+  if [ -n "$VERBATIM_EMPTY_ORIG" -a -n "$EMPTY" ]; then
+    local UPD_LNCNT="${UPD_JSON//[!$'\n']/}"
+    UPD_LNCNT="${UPD_LNCNT//$'\n'/:}:"
+    UPD_LNCNT="${#UPD_LNCNT}"
+    echo "@@ -$OFFS,1 +$OFFS,$UPD_LNCNT @@"
+    echo '-  "'"$DEP_TYPE"'endencies"'"$EMPTY"
+    echo "+${UPD_JSON//$'\n'/$'\n'+}"
+    return 0
+  fi
+
+  [ -z "$OFFS" ] || printf -v OFFS '%*s' "$OFFS" ''
+  OFFS="${OFFS% }"
+  OFFS="${OFFS// /$'\n'}"
+  diff -sU 1 --label known_"$DEP_TYPE"s <(
+    echo "$OFFS$OLD_JSON"
+    ) --label found_"$DEP_TYPE"s <(
+    echo "$OFFS$UPD_JSON"
+    ) | sed -re '
+    1{/^\-{3} /d}
+    2{/^\+{3} /d}
+    /^@@ /s~$~ '"$DEP_TYPE"'s~'
+}
+
+
 function update_manifest () {
-  local P_DIFF="$(compare_deps_as_json; echo :)"
-  # The colon is to protect a trailing whitespace, which should be
+  local P_DIFF="$(compare_deps_as_json --empty-orig=verbatim; echo :)"
+  # The colon is to protect potential trailing whitespace, which should be
   # redundant in bash but it's too subtle a bug to risk it.
   P_DIFF="${P_DIFF%:}"
   P_DIFF="${P_DIFF%$'\n'}"
-  "${COLORIZE_DIFF:-cat}" <<<"$P_DIFF"
+  maybe_colorize_diff <<<"$P_DIFF"
 
   local P_OPTS=(
     --batch
