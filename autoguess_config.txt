@@ -12,4 +12,5 @@ local AUTOGUESS_BUILD_UTIL_CMDS=(
   bower
   demo-util-160404-test-demos
   eslint
+  jslint
   )
