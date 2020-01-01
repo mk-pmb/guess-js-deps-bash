@@ -112,7 +112,7 @@ function find_manif_script_deps () {
     s~^\./~~
     s![\a\t\r]+! !g
     s~\b($bogus^'"$(printf '|%s' "${AUTOGUESS_BUILD_UTIL_CMDS[@]}"
-      )"')([$ &|()<>]|$|\x22|\x27)~\a\1 ~gp
+      )"')([$ &|()<>]|$|\x22|\x27)~\a\1 ~g
     /\a/{
       /^\v/!s~:~\r~
       s~^\v<(manif)>(\S+) ~\1://\2\r ~
@@ -123,10 +123,7 @@ function find_manif_script_deps () {
       s~\n[^\n\t]+$~~
       p
     }
-    ' | sed -re '
-    /\t/!d
-    s~^(demo-util-160404)-test-demos(\tmanif:)~lib-\1\2~
-    '
+    ' | grep -Pe '\t' | "$SELFPATH"/manif_script_cmd2pkg.sed
 }
 
 

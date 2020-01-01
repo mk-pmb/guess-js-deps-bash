@@ -5,13 +5,21 @@
 # like a known, will actually be used as a command.
 
 local AUTOGUESS_SHEBANG_CMDS=(
+
+  # Translation of command names to npm package names: manif_script_cmd2pkg.sed
+
   nodemjs
+
   )
 local AUTOGUESS_BUILD_UTIL_CMDS=(
   "${AUTOGUESS_SHEBANG_CMDS[@]}"
+
+  # Translation of command names to npm package names: manif_script_cmd2pkg.sed
+
   bower
   demo-util-160404-test-demos
   eslint
   jslint
-  yaml-lint
+  yamllint
+
   )
