@@ -108,7 +108,7 @@ function find_manif_script_deps () {
   ( </dev/null grep -HvPe '^\s*(#[^!]|$)' -- "${SCRIPTS[@]}"
     read_json_subtree '' .scripts | sed -nre '
       s~^\s*"([^"]+)": "~\v<manif>scripts/\1 ~p'
-  ) | sed -nre '
+  ) | sed -nrf <(echo '
     s~^\./~~
     s![\a\t\r]+! !g
     s~\b($bogus^'"$(printf '|%s' "${AUTOGUESS_BUILD_UTIL_CMDS[@]}"
@@ -123,7 +123,7 @@ function find_manif_script_deps () {
       s~\n[^\n\t]+$~~
       p
     }
-    ' | grep -Pe '\t' | "$SELFPATH"/manif_script_cmd2pkg.sed
+    ') | grep -Pe '\t' | "$SELFPATH"/manif_script_cmd2pkg.sed
 }
 
 
