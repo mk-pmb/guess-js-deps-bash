@@ -75,8 +75,6 @@ function find_imports_in_project () {
     )
   readarray -t IMPORTS < <(fastfind "${IMPORTS[@]}")
   progress "found ${#IMPORTS[@]}"
-  [ -n "${IMPORTS[0]}" ] || return 3$(
-    fail "Unable to find any import()s/imports in package: $CWD_PKG_NAME")
 
   progress 'I: Searching for require()s/imports: '
   readarray -t IMPORTS < <( (
@@ -85,6 +83,9 @@ function find_imports_in_project () {
     find_manif_eslint_deps
     ) | guess_unique_stdin_dep_types)
   progress 'done.'
+
+  [ -n "${IMPORTS[0]}" ] || return 3$(
+    fail "Unable to find any import()s/imports in package: $CWD_PKG_NAME")
 
   if [ "${OUTPUT_MODE[0]}" == 'fmt://tsv' ]; then
     printf '%s\n' "${IMPORTS[@]}"

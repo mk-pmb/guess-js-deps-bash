@@ -13,4 +13,5 @@ local AUTOGUESS_BUILD_UTIL_CMDS=(
   demo-util-160404-test-demos
   eslint
   jslint
+  yaml-lint
   )
