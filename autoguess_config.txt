@@ -21,5 +21,6 @@ local AUTOGUESS_BUILD_UTIL_CMDS=(
   eslint
   jslint
   yamllint
+  yaml-lint-all-recursive
 
   )
