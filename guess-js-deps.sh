@@ -397,6 +397,7 @@ function fastfind () {
 function find_imports_in_files () {
   [ "$#" == 0 ] && return 0
   eval "$(init_resolve_cache)"
+  local SBC_RGX='($bogus^'"$(printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"))"
   LANG=C grep -PHone '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
     )'(import|\W*from)\s.*$|require\([^()]+\)' -- "$@" \
     | tr "'" '"' | LANG=C sed -re '
@@ -405,9 +406,7 @@ function find_imports_in_files () {
     s~^(\S+\t)\xEF\xBB\xBF~\1~
     ' | LANG=C sed -nre '
     /\t1:#!/{
-      s~^(\S+)\t#! *(/\S*\s*|)\b($bogus^'"$(
-        printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"
-        )"')\b(\s.*|)$~\3\t\1~p
+      s~^(\S+)\t1:#! *(/\S*\s*|)\b'"$SBC_RGX"'\b(\s.*|)$~\3\t\1~p
     }
     s~\t[0-9]+:~\t~  # other match types work w/o line numbers.
     s~^(\S+)\trequire\("([^"]+)"\)$~\2\t\1~p
