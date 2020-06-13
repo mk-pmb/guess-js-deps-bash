@@ -19,6 +19,12 @@ function guess_js_deps () {
   local KNOWN_DEP_TYPES=( dep devDep )
 
   local RUNMODE="$1"; shift
+  case "$RUNMODE" in
+    '..' | '../'* )
+      cd -- "$RUNMODE" # probably to where your package.json is.
+      RUNMODE="$1"
+      shift;;
+  esac
   local OUTPUT_MODE=( fail 'Unsupported output mode. This is a bug.' )
   case "$RUNMODE" in
     as-json ) OUTPUT_MODE=( dump_deps_as_json );;
