@@ -20,6 +20,7 @@ local AUTOGUESS_BUILD_UTIL_CMDS=(
   demo-util-160404-test-demos
   eslint
   jslint
+  libdir-binlinks-cfg-linker-pmb
   yamllint
   yaml-lint-all-recursive
 
