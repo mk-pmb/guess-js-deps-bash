@@ -548,17 +548,20 @@ function guess_one_dep_type () {
 
 
 function guess_unique_stdin_dep_types () {
-  with_stdin_args guess_dep_types | csort -u
+  csort -u | with_stdin_args guess_dep_types | csort -u
 }
 
 
 function guess_dep_types () {
   eval "$(init_resolve_cache)"
+  local SPURIOUS=$'\n'"$(read_json_subtree '' .spuriousDependencies \
+    | sed -nre 's~^ *"(\S+)",?$~\1~p')"$'\n'
   local REQ_MOD=
   local REQ_FILE=
   for REQ_MOD in "$@"; do
     REQ_FILE="${REQ_MOD##*$'\t'}"
     REQ_MOD="${REQ_MOD%$'\t'*}"
+    [[ "$SPURIOUS" == *$'\n'"$REQ_MOD"$'\n'* ]] && continue
     guess_one_dep_type "$REQ_MOD" "$REQ_FILE" || return $?
   done
 
