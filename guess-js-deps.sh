@@ -404,13 +404,18 @@ function find_imports_in_files () {
   [ "$#" == 0 ] && return 0
   eval "$(init_resolve_cache)"
   local SBC_RGX='($bogus^'"$(printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"))"
+
+  local SUBPATH_RGX='/\S*'
+  # Actual subpath is optional: Trailing slash notation is used in
+  # ubborg-planner-pmb's slashableImport.
+
   LANG=C grep -PHone '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
     )'(import|\W*from)\s.*$|require\([^()]+\)' -- "$@" \
-    | tr "'" '"' | LANG=C sed -re '
+    | tr "'" '"' | LANG=C sed -rf <(echo '
     s~\s+~ ~g
     s~^(\./|)([^: ]+):~\2\t~
     s~^(\S+\t)\xEF\xBB\xBF~\1~
-    ' | LANG=C sed -nre '
+    ') | LANG=C sed -nrf <(echo '
     /\t1:#!/{
       s~^(\S+)\t1:#! *(/\S*\s*|)\b'"$SBC_RGX"'\b(\s.*|)$~\3\t\1~p
     }
@@ -424,10 +429,10 @@ function find_imports_in_files () {
       s~^(\S+ )import "~\1 from "~
       s~^(\S+) (.* |)from "([^"]+)";?\s*(/[/*].*|)$~\3\t\1~p
     }
-    ' | sed -re '
+    ') | sed -rf <(echo '
     # remove paths from module IDs (mymodule/path/to/file.js)
-    s~^((@[a-z0-9_-]+/|)([a-z0-9_-]+))/\S+\t~\1\t~
-    '
+    s~^((@[a-z0-9_-]+/|)([a-z0-9_-]+))'"$SUBPATH_RGX"'\t~\1\t~
+    ')
 }
 
 
