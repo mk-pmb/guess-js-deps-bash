@@ -414,7 +414,7 @@ function find_imports_in_files () {
     | tr "'" '"' | LANG=C sed -rf <(echo '
     s~\s+~ ~g
     s~^(\./|)([^: ]+):~\2\t~
-    s~^(\S+\t)\xEF\xBB\xBF~\1~
+    s~^(\S+\t[0-9]+:)\xEF\xBB\xBF~\1~
     ') | LANG=C sed -nrf <(echo '
     /\t1:#!/{
       s~^(\S+)\t1:#! *(/\S*\s*|)\b'"$SBC_RGX"'\b(\s.*|)$~\3\t\1~p
