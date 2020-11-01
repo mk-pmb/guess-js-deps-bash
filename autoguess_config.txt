@@ -17,10 +17,12 @@ local AUTOGUESS_BUILD_UTIL_CMDS=(
   # Translation of command names to npm package names: manif_script_cmd2pkg.sed
 
   bower
+  browserify
   demo-util-160404-test-demos
   eslint
   jslint
   libdir-binlinks-cfg-linker-pmb
+  uglifyjs
   yamllint
   yaml-lint-all-recursive
 
