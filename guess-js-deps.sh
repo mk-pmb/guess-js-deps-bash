@@ -134,6 +134,13 @@ function find_manif_script_deps () {
 
 
 function find_manif_eslint_deps () {
+  local DEPS="$(find_manif_eslint_deps__scan)"
+  [ -n "$DEPS" ] || return 0
+  echo "$DEPS"
+}
+
+
+function find_manif_eslint_deps__scan () {
   local ESLC="$SELFPATH"/eslint_cfg_
   ( read_json_subtree '' .eslintConfig.extends
     "$ESLC"scan_deps.sed .eslintrc.yaml
