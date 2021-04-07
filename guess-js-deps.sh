@@ -77,6 +77,7 @@ function find_imports_in_project () {
     '(' -name '*.js'
         -o -name '*.mjs'
         -o -name '*.jsm'
+        -o -name '*.html'
         ')'
     )
   readarray -t IMPORTS < <(fastfind "${IMPORTS[@]}")
@@ -87,6 +88,7 @@ function find_imports_in_project () {
     find_imports_in_files "${IMPORTS[@]}"
     find_manif_script_deps
     find_manif_eslint_deps
+    find_simple_html_script_deps
     ) | guess_unique_stdin_dep_types)
   progress 'done.'
 
@@ -428,10 +430,6 @@ function find_imports_in_files () {
   eval "$(init_resolve_cache)"
   local SBC_RGX='($bogus^'"$(printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"))"
 
-  local SUBPATH_RGX='/\S*'
-  # Actual subpath is optional: Trailing slash notation is used in
-  # ubborg-planner-pmb's slashableImport.
-
   LANG=C grep -PHone '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
     )'(import|\W*from)\s.*$|require\([^()]+\)' -- "$@" \
     | tr "'" '"' | LANG=C sed -rf <(echo '
@@ -452,10 +450,44 @@ function find_imports_in_files () {
       s~^(\S+ )import "~\1 from "~
       s~^(\S+) (.* |)from "([^"]+)";?\s*(/[/*].*|)$~\3\t\1~p
     }
-    ') | sed -rf <(echo '
-    # remove paths from module IDs (mymodule/path/to/file.js)
-    s~^((@[a-z0-9_-]+/|)([a-z0-9_-]+))'"$SUBPATH_RGX"'\t~\1\t~
-    ')
+    ') | remove_paths_from_module_ids
+}
+
+
+function remove_paths_from_module_ids () {
+  # remove paths from module IDs (mymodule/path/to/file.js)
+
+  local SUBPATH_RGX='/\S*'
+  # Actual subpath is optional: Trailing slash notation is used in
+  # ubborg-planner-pmb's slashableImport.
+
+  sed -rf <(echo '
+    s~^((@[a-z0-9_-]+/|)([a-z0-9_-]+))'"$SUBPATH_RGX"'(\t|$)~\1\4~
+    ') -- "$@" || return $?
+}
+
+
+function find_simple_html_script_deps () {
+  progress 'I: Searching for HTML files: '
+  local LIST=(
+    -type f
+    '(' -name '*.html'
+        ')'
+    )
+  readarray -t LIST < <(fastfind "${LIST[@]}")
+  progress "found ${#LIST[@]}"
+  [ "${#LIST[@]}" == 0 ] && return 0
+  local SRC_FN= TAGS= DEP=
+  local Q='"' SRC_ATTR_RX=' src="(\.*/)*node_modules/[^"]+"'
+  for SRC_FN in "${LIST[@]}"; do
+    SRC_FN="${SRC_FN#\./}"
+    readarray -t LIST < <(<"$SRC_FN" tr -s '\r\n\t ' ' ' \
+      | grep -oPe '<script\b[^<>]+>' | grep -oPe "$SRC_ATTR_RX" \
+      | cut -d "$Q" -sf 2 | cut -d / -f 2- | remove_paths_from_module_ids)
+    for DEP in "${LIST[@]}"; do
+      echo "$DEP"$'\t'"$SRC_FN"
+    done
+  done
 }
 
 
@@ -517,7 +549,7 @@ function guess_one_dep_type () {
     "$CWD_PKG_NAME" ) DEP_TYPE='self-ref'; DEP_VER='*';;
     . | ./* | .. | ../* ) DEP_TYPE='relPath'; DEP_VER='*';;
     * )
-      [ -n "$(safe_pkg_names "$REQ_MOD")" ] || continue$(
+      [ -n "$(safe_pkg_names "$REQ_MOD")" ] || return 0$(
         echo "W: skip dep: scary module name: $REQ_MOD" >&2)
       ;;
   esac
