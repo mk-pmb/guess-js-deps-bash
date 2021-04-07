@@ -136,7 +136,18 @@ function find_manif_script_deps () {
 function find_manif_eslint_deps () {
   local DEPS="$(find_manif_eslint_deps__scan)"
   [ -n "$DEPS" ] || return 0
-  echo "$DEPS"
+  local SCRIPTS="$(read_json_subtree '' .scripts values)"
+
+  local BUF="$DEPS"
+  BUF="¶ ${BUF//$'\n'/ ¶ } ¶"
+  BUF="${BUF//$'\t'/ » }"
+  case "$BUF" in
+    *'¶ eslint-config-nodejs-pmb '* )
+      <<<"$SCRIPTS" grep -qoPe '^\s*"elp[ \&]' && echo 'eslint-pretty-pmb'
+      ;;
+  esac
+
+  <<<"$DEPS" sed -re 's~\S$~&\tmanif://lint~'
 }
 
 
@@ -145,7 +156,7 @@ function find_manif_eslint_deps__scan () {
   ( read_json_subtree '' .eslintConfig.extends
     "$ESLC"scan_deps.sed .eslintrc.yaml
   ) 2>/dev/null | tr '",[]' '\n' \
-    | sed -rf "$ESLC"guess_long_pkgnames.sed -e 's~$~\tmanif://lint~'
+    | sed -rf "$ESLC"guess_long_pkgnames.sed
 }
 
 
@@ -367,12 +378,17 @@ function progress () {
 
 function read_json_subtree () {
   local SRC_FN="$1"; shift
+  local SUBDOT="$1"; shift
+  local FX="$1"; shift
   [ -n "$SRC_FN" ] || SRC_FN="$MANI_BFN"
   [ -s "$SRC_FN" ] || return 4$(fail "file not found: $SRC_FN")
-  local SUBDOT="$1"; shift
   [ "${SRC_FN:0:1}" == / ] || SRC_FN="./$SRC_FN"
-  SRCFN="$SRC_FN" nodejs -p '
-    JSON.stringify(require(process.env.SRCFN)'"$SUBDOT, null, 2)"
+  local CODE="require(process.env.SRCFN)$SUBDOT"
+  case "$FX" in
+    keys | values ) CODE="Object.$FX($CODE)";;
+  esac
+  CODE="JSON.stringify($CODE, null, 2)"
+  SRCFN="$SRC_FN" nodejs -p "$CODE"
 }
 
 
