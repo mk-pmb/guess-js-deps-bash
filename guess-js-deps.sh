@@ -468,22 +468,25 @@ function remove_paths_from_module_ids () {
 
 
 function find_simple_html_script_deps () {
-  progress 'I: Searching for HTML files: '
+  progress 'I: Searching for HTML files: ' >&2
   local LIST=(
     -type f
     '(' -name '*.html'
         ')'
     )
   readarray -t LIST < <(fastfind "${LIST[@]}")
-  progress "found ${#LIST[@]}"
+  progress "found ${#LIST[@]}" >&2
   [ "${#LIST[@]}" == 0 ] && return 0
   local SRC_FN= TAGS= DEP=
-  local Q='"' SRC_ATTR_RX=' src="(\.*/)*node_modules/[^"]+"'
+  local Q='"'
+  local MODBASE_RGX='(\.*/)*node_modules/'
+  local SRC_ATTR_RX=' src="'"$MODBASE_RGX"'[^"]+"'
   for SRC_FN in "${LIST[@]}"; do
     SRC_FN="${SRC_FN#\./}"
     readarray -t LIST < <(<"$SRC_FN" tr -s '\r\n\t ' ' ' \
       | grep -oPe '<script\b[^<>]+>' | grep -oPe "$SRC_ATTR_RX" \
-      | cut -d "$Q" -sf 2 | cut -d / -f 2- | remove_paths_from_module_ids)
+      | cut -d "$Q" -sf 2 | sed -re "s~^$MODBASE_RGX~~
+      " | remove_paths_from_module_ids)
     for DEP in "${LIST[@]}"; do
       echo "$DEP"$'\t'"$SRC_FN"
     done
@@ -590,6 +593,7 @@ function guess_one_dep_type () {
       test ) DEP_TYPE=devDep;;
     esac
     case "$REQ_FILE" in
+      */webpack.config.js | \
       manif://scripts/*lint* | \
       manif://scripts/*test* | \
       manif://lint ) DEP_TYPE=devDep;;
