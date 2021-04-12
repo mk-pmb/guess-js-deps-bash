@@ -399,17 +399,51 @@ function lncnt () { [ -n "$1" ] && wc -l <<<"$1"; }
 
 
 function node_resolve () {
-  MOD_NAME="$1" nodejs -p 'require.resolve(process.env.MOD_NAME)'
+  local ID="$1"
+  local BUF="$(nodejs -p 'require.resolve(process.argv[1])' \
+    -- "$ID" 2>&1 | sed -re 's~^\s+~ ~')"
+  if [ "${BUF:0:1}" == / ]; then
+    echo "$BUF"
+    return 0
+  fi
+  node_resolve__manif && return 0
+  echo "E: $FUNCNAME($ID): unsupported output from node.js: $BUF" >&2
+  return 3
+}
+
+
+function node_resolve__manif () {
+  case "$ID" in
+    */"$MANI_BFN" ) ;;
+    * ) return 2;;
+  esac
+  local NDEF=$'^\n\nError [ERR_PACKAGE_PATH_NOT_EXPORTED]: Package subpath '$(
+    )"'./package.json'"' is not defined by "exports" in '
+  local FOUND=
+  case "$BUF" in
+    *"$NDEF"*$'\n at '* )
+      FOUND="${BUF#*"$NDEF"}"
+      FOUND="${FOUND%%$'\n at '*}"
+      if [ -f "$FOUND" ]; then
+        echo "$FOUND"
+        return 0
+      fi
+      ;;
+  esac
+  return 2
 }
 
 
 function node_detect_manif_version () {
   # We can't easily cache the results here from the inside,
   # because this function is meant to run in a subshell.
-  MANIF="$1/$MANI_BFN" nodejs -p '
-    var m = require(process.env.MANIF), iu = (m.npmInstallUrl || false);
-    (iu.default
-      || m.version)'
+  local MANI="$1/$MANI_BFN"
+  local RESO="$(node_resolve "$MANI")"
+  [ -f "$RESO" ] || return 4$(echo "E: $FUNCNAME: Cannot find $MANI" >&2)
+  RESO="$RESO" nodejs <<<'
+    var m = require(process.env.RESO), iu = (m.npmInstallUrl || false);
+    console.log(iu.default
+      || m.version);'
 }
 
 
