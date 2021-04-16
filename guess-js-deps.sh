@@ -62,6 +62,21 @@ function init_resolve_cache () {
   # echo "D: ${FUNCNAME[*]}: <${!RESOLVE_CACHE[*]}>" >&2
   [ -n "${!RESOLVE_CACHE[*]}" ] && return 0
   echo "local -A RESOLVE_CACHE=( ['?canhaz?']=+ )"
+  echo "${FUNCNAME}__prep || return $?"
+}
+
+
+function init_resolve_cache__prep () {
+  init_resolve_cache__webpack_cfg || return $?
+}
+
+
+function init_resolve_cache__webpack_cfg () {
+  local WPCFG='./webpack.config.js'
+  [ -f "$WPCFG" ] || return 0
+  local VAL="$(nodejs -p "Object.keys(require('./webpack.config.js'
+    ).resolve.alias).join('\n')" 2>/dev/null)"
+  [ -z "$VAL" ] || RESOLVE_CACHE['?packer/alias_pkgnames']+="$VAL"$'\n'
 }
 
 
@@ -333,7 +348,7 @@ function guess_cwd_pkg_name () {
     safe_pkg_names "$PKGN" && return 0
     echo "W: module name from manifest looks too scary: $PKGN" >&2
   fi
-  PKGN="$(basename "$PWD")"
+  PKGN="$(basename -- "$PWD")"
   echo "W: unable to detect module name from manifest," \
     "will use current directory's name instead: $PKGN" >&2
   echo "$PKGN"
@@ -585,11 +600,18 @@ function guess_one_dep_type () {
   case "$REQ_MOD" in
     "$CWD_PKG_NAME" ) DEP_TYPE='self-ref'; DEP_VER='*';;
     . | ./* | .. | ../* ) DEP_TYPE='relPath'; DEP_VER='*';;
-    * )
-      [ -n "$(safe_pkg_names "$REQ_MOD")" ] || return 0$(
-        echo "W: skip dep: scary module name: $REQ_MOD" >&2)
-      ;;
   esac
+
+  if [ -z "$DEP_VER" ]; then
+    case $'\n'"${RESOLVE_CACHE['?packer/alias_pkgnames']}"$'\n' in
+      *$'\n'"${REQ_MOD%%/*}"$'\n'* )
+        DEP_TYPE='packer-alias'
+        DEP_VER='*';;
+    esac
+  fi
+
+  [ -n "$DEP_VER" ] || [ -n "$(safe_pkg_names "$REQ_MOD")" ] || return 0$(
+    echo "W: skip dep: scary module name: $REQ_MOD" >&2)
 
   if [ "$DEP_TYPE" == dep ]; then
     RESOLVED="${RESOLVE_CACHE[$REQ_MOD?file]}"
