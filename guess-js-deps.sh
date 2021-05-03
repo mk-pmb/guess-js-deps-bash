@@ -417,10 +417,14 @@ function node_resolve () {
   local ID="$1"
   local BUF="$(nodejs -p 'require.resolve(process.argv[1])' \
     -- "$ID" 2>&1 | sed -re 's~^\s+~ ~')"
-  if [ "${BUF:0:1}" == / ]; then
-    echo "$BUF"
-    return 0
-  fi
+  case "$BUF" in
+    /* ) # resolved to a file's absolute path
+      echo "$BUF"; return 0;;
+    *[^a-z0-9_]* ) # probably not a built-in module
+      ;;
+    "$ID" ) # built-in module
+      echo "$BUF"; return 0;;
+  esac
   node_resolve__manif && return 0
   echo "E: $FUNCNAME($ID): unsupported output from node.js: $BUF" >&2
   return 3
