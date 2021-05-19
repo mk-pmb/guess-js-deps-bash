@@ -160,7 +160,7 @@ function find_manif_eslint_deps () {
   BUF="${BUF//$'\t'/ » }"
   case "$BUF" in
     *'¶ eslint-config-nodejs-pmb '* )
-      <<<"$SCRIPTS" grep -qoPe '^\s*"elp[ \&]' && echo 'eslint-pretty-pmb'
+      <<<"$SCRIPTS" grep -qoPe '^\s*"elp[ \&]' && DEPS+=$'\neslint-pretty-pmb'
       ;;
   esac
 
