@@ -402,7 +402,7 @@ function read_json_subtree () {
   [ "${SRC_FN:0:1}" == / ] || SRC_FN="./$SRC_FN"
   local CODE="require(process.env.SRCFN)$SUBDOT"
   case "$FX" in
-    keys | values ) CODE="Object.$FX($CODE)";;
+    keys | values ) CODE="Object.$FX($CODE || false)";;
   esac
   CODE="JSON.stringify($CODE, null, 2)"
   SRCFN="$SRC_FN" nodejs -p "$CODE"
