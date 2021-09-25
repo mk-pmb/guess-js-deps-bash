@@ -1,5 +1,5 @@
 { "name": "guess-js-deps-bash",
-  "version": "0.1.51",
+  "version": "0.1.52",
   "description": "A bash attempt at npm-forgot: Guess JavaScript require() dependencies, detect their versions, compare with package.json.",
 
   "keywords": [
