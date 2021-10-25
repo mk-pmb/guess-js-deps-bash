@@ -643,6 +643,9 @@ function guess_one_dep_type () {
   fi
 
   local SUBDIR=
+  local REQ_NORM_FEXT="$REQ_FILE"
+  REQ_NORM_FEXT="${REQ_NORM_FEXT/%.js/.%JS}"
+  REQ_NORM_FEXT="${REQ_NORM_FEXT/%.mjs/.%JS}"
   if [ "$DEP_TYPE" == dep ]; then
     SUBDIR="${REQ_FILE%%/*}"
     case "${SUBDIR%s}" in
@@ -652,13 +655,14 @@ function guess_one_dep_type () {
       doc | \
       test ) DEP_TYPE=devDep;;
     esac
-    case "$REQ_FILE" in
+    case "$REQ_NORM_FEXT" in
       */webpack.config.js | \
       manif://scripts/*lint* | \
       manif://scripts/*test* | \
       manif://lint ) DEP_TYPE=devDep;;
       */* ) ;;    # files in subdirs are handled above
       # below: top-level files
+      *[.-]test.%JS | \
       test.* ) DEP_TYPE=devDep;;
     esac
   fi
