@@ -141,8 +141,7 @@ function find_imports_in_project () {
   local IMPORTS=()
   readarray -t IMPORTS < <(
     scan_all_scannable_files_in_project \
-      | guess_unique_stdin_dep_types \
-      | cut -sf 1-3)
+      | guess_unique_stdin_dep_types 1-3)
   progress 'done.'
 
   [ -n "${IMPORTS[0]}" ] || return 3$(
@@ -720,7 +719,8 @@ function guess_one_dep_type () {
 
 
 function guess_unique_stdin_dep_types () {
-  csort -u | with_stdin_args guess_dep_types | csort -u
+  local FIELDS="${1:-1-}"; shift
+  csort -u | with_stdin_args guess_dep_types | cut -sf "$FIELDS" | csort -Vu
 }
 
 
