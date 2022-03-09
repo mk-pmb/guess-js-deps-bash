@@ -16,7 +16,11 @@ function guess_js_deps () {
   local DBGLV="${DEBUGLEVEL:-0}"
   local COLORIZE_DIFF="$(can_haz_cmd colordiff)"
   local MANI_BFN='package.json'
-  local KNOWN_DEP_TYPES=( dep devDep )
+  local KNOWN_DEP_TYPES=(
+    dep
+    devDep
+    peerDep
+    )
 
   local RUNMODE="$1"; shift
   case "$RUNMODE" in
@@ -32,16 +36,26 @@ function guess_js_deps () {
     cmp )     OUTPUT_MODE=( maybe_colorize_diff compare_deps_as_json );;
     upd )     OUTPUT_MODE=( update_manifest );;
     sym )     OUTPUT_MODE=( symlink_nonlocal_node_modules );;
+
     usy )
       OUTPUT_MODE=( output_multi
         update_manifest
         symlink_nonlocal_node_modules
       );;
+
+    why )
+      scan_all_scannable_files_in_project \
+        | guess_unique_stdin_dep_types
+      return $?;;
+
     manif )   read_json_subtree "$@"; return $?;;
-    scan-imports )    find_imports_in_files "$@"; return $?;;
+    list-files )      find_scannable_files_in_project; return $?;;
+    scan-all )        scan_all_scannable_files_in_project; return $?;;
+    scan-imports )    warn_no_args find_imports_in_files "$@"; return $?;;
     scan-known )      scan_manifest_deps; return $?;;
     scan-manif )      find_manif_script_deps "$@"; return $?;;
     scan-eslint-cfg ) find_manif_eslint_deps "$@"; return $?;;
+    guess-types )     guess_unique_stdin_dep_types; return $?;;
     tabulate-found )  OUTPUT_MODE=( 'fmt://tsv' );;
     tabulate-known )  tabulate_manifest_deps; return $?;;
     --func ) "$@"; return $?;;
@@ -49,6 +63,12 @@ function guess_js_deps () {
   esac
 
   find_imports_in_project "${OUTPUT_MODE[@]}"
+}
+
+
+function warn_no_args () {
+  [ "$#" -ge 2 ] || echo "W: Calling $1 with no arguments!" >&2
+  "$@"; return $?
 }
 
 
@@ -80,14 +100,8 @@ function init_resolve_cache__webpack_cfg () {
 }
 
 
-function find_imports_in_project () {
-  local THEN=( "$@" )
-  local CWD_PKG_NAME="$(guess_cwd_pkg_name)"
-  progress 'I: Searching for JavaScript files: '
-  local -A DEPS_BY_TYPE=()
-  eval "$(init_resolve_cache)"
-  local IMPORTS=()
-  IMPORTS=(
+function find_scannable_files_in_project () {
+  local FF=(
     -type f
     '(' -name '*.js'
         -o -name '*.mjs'
@@ -95,16 +109,40 @@ function find_imports_in_project () {
         -o -name '*.html'
         ')'
     )
-  readarray -t IMPORTS < <(fastfind "${IMPORTS[@]}")
+  fastfind "${FF[@]}" || return $?
+}
+
+
+function scan_all_scannable_files_in_project () {
+  if [ "$1" == --reuse-imports-array ]; then
+    shift
+  else
+    local IMPORTS=()
+  fi
+
+  progress 'I: Searching for JavaScript files: '
+  readarray -t IMPORTS < <(find_scannable_files_in_project)
   progress "found ${#IMPORTS[@]}"
 
   progress 'I: Searching for require()s/imports: '
-  readarray -t IMPORTS < <( (
-    find_imports_in_files "${IMPORTS[@]}"
-    find_manif_script_deps
-    find_manif_eslint_deps
-    find_simple_html_script_deps
-    ) | guess_unique_stdin_dep_types)
+  find_imports_in_files "${IMPORTS[@]}"
+  find_manif_script_deps
+  find_manif_eslint_deps
+  find_simple_html_script_deps
+}
+
+
+function find_imports_in_project () {
+  local THEN=( "$@" )
+  local CWD_PKG_NAME="$(guess_cwd_pkg_name)"
+  local -A DEPS_BY_TYPE=()
+  eval "$(init_resolve_cache)"
+
+  local IMPORTS=()
+  readarray -t IMPORTS < <(
+    scan_all_scannable_files_in_project \
+      | guess_unique_stdin_dep_types \
+      | cut -sf 1-3)
   progress 'done.'
 
   [ -n "${IMPORTS[0]}" ] || return 3$(
@@ -666,10 +704,16 @@ function guess_one_dep_type () {
       test.* ) DEP_TYPE=devDep;;
     esac
   fi
+  case "$DEP_TYPE:$REQ_MOD" in
+    dep:eslin't' )
+      # :TODO: Better way to opt-out from eslint guessing
+      DEP_TYPE='peerDep';;
+  esac
 
   echo -n "$DEP_TYPE"
   echo -n $'\t'"$REQ_MOD"
   echo -n $'\t'"$DEP_VER"
+  echo -n $'\t'"$REQ_FILE"
   # echo -n $'\t'"$RESOLVED"
   echo
 }
@@ -702,9 +746,10 @@ function merge_redundant_devdeps () {
   # Assumption: If dupes exist, they will be exact (esp. same version)
   # because we guessed those version anyway. (The source files didn't
   # care about versions.)
-  # Thus we can just eliminate devDeps that are also deps:
-  DEPS_BY_TYPE[devDep]="$(
-    <<<"${DEPS_BY_TYPE[devDep]}" grep -vxFe "${DEPS_BY_TYPE[dep]}")"
+  # Thus we can just eliminate devDeps that are also deps or peerDeps:
+  local EXCLUDE="${DEPS_BY_TYPE[dep]}"
+  EXCLUDE+=$'\n'"${DEPS_BY_TYPE[peerDep]}"
+  DEPS_BY_TYPE[devDep]="$(<<<"${DEPS_BY_TYPE[devDep]}" grep -vxFe "$EXCLUDE")"
   return 0
 }
 
