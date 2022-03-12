@@ -720,7 +720,8 @@ function guess_one_dep_type () {
 
 function guess_unique_stdin_dep_types () {
   local FIELDS="${1:-1-}"; shift
-  csort -u | with_stdin_args guess_dep_types | cut -sf "$FIELDS" | csort -Vu
+  csort --unique | with_stdin_args guess_dep_types | cut -sf "$FIELDS" \
+    | csort --unique # <-- not --version-sort: would group "@" after "z"
 }
 
 
