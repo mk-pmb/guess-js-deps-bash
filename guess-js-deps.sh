@@ -195,8 +195,16 @@ function find_manif_eslint_deps () {
   local BUF="$DEPS"
   BUF="¶ ${BUF//$'\n'/ ¶ } ¶"
   BUF="${BUF//$'\t'/ » }"
+
+  local ECNP='eslint-config-nodejs-pmb'
   case "$BUF" in
-    *'¶ eslint-config-nodejs-pmb '* )
+    *"¶ $ECNP "* )
+      local PEER_DEPS="$ECNP/test/expectedPeerDependencies.js"
+      PEER_DEPS="require('$PEER_DEPS').join('\n')"
+      PEER_DEPS="$(nodejs -p "$PEER_DEPS")"
+      [ -n "$PEER_DEPS" ] || return 4$(
+        echo "E: Failed to detect peer dependencies of $ECNP" >&2)
+      DEPS+=$'\n'"$PEER_DEPS"
       <<<"$SCRIPTS" grep -qoPe '^\s*"elp[ \&"]' && DEPS+=$'\neslint-pretty-pmb'
       ;;
   esac
