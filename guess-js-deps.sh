@@ -33,9 +33,9 @@ function guess_js_deps () {
   case "$RUNMODE" in
     as-json ) OUTPUT_MODE=( dump_deps_as_json );;
     '' | \
-    cmp )     OUTPUT_MODE=( maybe_colorize_diff compare_deps_as_json );;
-    upd )     OUTPUT_MODE=( update_manifest );;
-    sym )     OUTPUT_MODE=( symlink_nonlocal_node_modules );;
+    cmp ) OUTPUT_MODE=( maybe_colorize_diff compare_deps_as_json );;
+    upd ) OUTPUT_MODE=( update_manifest );;
+    sym ) OUTPUT_MODE=( symlink_nonlocal_node_modules );;
 
     usy )
       OUTPUT_MODE=( output_multi
@@ -44,8 +44,8 @@ function guess_js_deps () {
       );;
 
     why ) debug_why "$@"; return $?;;
+    manif ) read_json_subtree "$@"; return $?;;
 
-    manif )   read_json_subtree "$@"; return $?;;
     list-files )      find_scannable_files_in_project; return $?;;
     scan-all )        scan_all_scannable_files_in_project; return $?;;
     scan-imports )    warn_no_args find_imports_in_files "$@"; return $?;;
