@@ -43,10 +43,7 @@ function guess_js_deps () {
         symlink_nonlocal_node_modules
       );;
 
-    why )
-      scan_all_scannable_files_in_project \
-        | guess_unique_stdin_dep_types
-      return $?;;
+    why ) debug_why "$@"; return $?;;
 
     manif )   read_json_subtree "$@"; return $?;;
     list-files )      find_scannable_files_in_project; return $?;;
@@ -75,6 +72,28 @@ function warn_no_args () {
 function maybe_colorize_diff () {
   [ -z "$*" ] || exec < <("$@")
   "${COLORIZE_DIFF:-cat}"
+}
+
+
+function debug_why () {
+  if [ "$#" == 0 ]; then
+    scan_all_scannable_files_in_project \
+      | guess_unique_stdin_dep_types
+    return $?
+  fi
+
+  local OPT=()
+  local KWD=
+  case "$1" in
+    -* ) OPT=( "$@" );;
+    * )
+      KWD="$(<<<"$*" grep -Pe '\S+')"
+      [ -n "$KWD" ] || return 4$(echo "E: $FUNCNAME: Empty keywords" >&2)
+      tty --silent <&1 && OPT+=( --color=always )
+      OPT+=( -Fie "$KWD" )
+      ;;
+  esac
+  </dev/null "$FUNCNAME" | grep "${OPT[@]}"
 }
 
 
