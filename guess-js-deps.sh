@@ -88,6 +88,7 @@ function init_resolve_cache () {
 
 function init_resolve_cache__prep () {
   init_resolve_cache__webpack_cfg || return $?
+  init_resolve_cache__forced_custom || return $?
 }
 
 
@@ -97,6 +98,26 @@ function init_resolve_cache__webpack_cfg () {
   local VAL="$(nodejs -p "Object.keys(require('./webpack.config.js'
     ).resolve.alias).join('\n')" 2>/dev/null)"
   [ -z "$VAL" ] || RESOLVE_CACHE['?packer/alias_pkgnames']+="$VAL"$'\n'
+}
+
+
+function init_resolve_cache__forced_custom () {
+  local LIST=()
+  readarray -t LIST < <(
+    nodejs -p 'var manif = require("./package.json"); JSON.stringify([
+      manif.dependencies,
+      manif.devDependencies,
+    ], null, 2)' | sed -nrf <(echo '
+      s~^\s+"~~
+      s~",?$~~
+      s~": "([a-z]\S+/\S+#\S)~\t\1~p
+    '))
+  local KEY= VAL=
+  for VAL in "${LIST[@]}"; do
+    KEY="${VAL%%$'\t'*}"
+    VAL="${VAL#*$'\t'}"
+    RESOLVE_CACHE["$KEY?ver"]="$VAL"
+  done
 }
 
 
