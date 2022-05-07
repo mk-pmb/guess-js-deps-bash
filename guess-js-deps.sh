@@ -114,7 +114,7 @@ function init_resolve_cache__prep () {
 function init_resolve_cache__webpack_cfg () {
   local WPCFG='./webpack.config.js'
   [ -f "$WPCFG" ] || return 0
-  local VAL="$(nodejs -p "Object.keys(require('./webpack.config.js'
+  local VAL="$(nodejs -p "Object.keys(require('$WPCFG'
     ).resolve.alias).join('\n')" 2>/dev/null)"
   [ -z "$VAL" ] || RESOLVE_CACHE['?packer/alias_pkgnames']+="$VAL"$'\n'
 }
@@ -740,14 +740,23 @@ function guess_one_dep_type () {
       doc | \
       test ) DEP_TYPE=devDep;;
     esac
+
+    case "…/$REQ_NORM_FEXT" in
+      # ^-- The following patterns shall match the top-level directory
+      #     as well as any subdir.
+
+      *[.-]test.%JS | \
+      */webpack.config.%JS | \
+      . ) DEP_TYPE=devDep;;
+    esac
+
     case "$REQ_NORM_FEXT" in
-      */webpack.config.js | \
       manif://scripts/*lint* | \
       manif://scripts/*test* | \
-      manif://lint ) DEP_TYPE=devDep;;
+      manif://lint | \
+      . ) DEP_TYPE=devDep;;
       */* ) ;;    # files in subdirs are handled above
       # below: top-level files
-      *[.-]test.%JS | \
       test.* ) DEP_TYPE=devDep;;
     esac
   fi
