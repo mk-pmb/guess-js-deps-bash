@@ -106,7 +106,7 @@ function init_resolve_cache () {
 
 
 function init_resolve_cache__prep () {
-  init_resolve_cache__webpack_cfg || return $?
+  init_resolve_cache__webpack_cfg eval || return $?
   init_resolve_cache__forced_custom || return $?
 }
 
@@ -114,9 +114,17 @@ function init_resolve_cache__prep () {
 function init_resolve_cache__webpack_cfg () {
   local WPCFG='./webpack.config.js'
   [ -f "$WPCFG" ] || return 0
-  local VAL="$(nodejs -p "Object.keys(require('$WPCFG'
-    ).resolve.alias).join('\n')" 2>/dev/null)"
-  [ -z "$VAL" ] || RESOLVE_CACHE['?packer/alias_pkgnames']+="$VAL"$'\n'
+  local SCAN="$SELFPATH"/scan_webpack_config.js
+  local LEARN='
+    const scan = require(process.env.SCAN);
+    const wpcfg = require(process.env.WPCFG);
+    JSON.stringify(scan(wpcfg), null, 2)
+    '
+  LEARN="$(WPCFG="$WPCFG" SCAN="$SCAN" nodejs -e "$LEARN")" || return $?$(
+    echo "E: $FUNCNAME: Failed to scan $WPCFG" >&2)
+  local NEXT="${1:-echo}"; shift
+  "$NEXT" "$@" "$LEARN" || return $?$(
+    echo "E: $FUNCNAME: Failed to '$NEXT' the scan report" >&2)
 }
 
 
@@ -165,10 +173,18 @@ function scan_all_scannable_files_in_project () {
   progress "found ${#IMPORTS[@]}"
 
   progress 'I: Searching for require()s/imports: '
+  eval "$(init_resolve_cache)"
+  find_webpack_config_cached_deps
   find_imports_in_files "${IMPORTS[@]}"
   find_manif_script_deps
   find_manif_eslint_deps
   find_simple_html_script_deps
+}
+
+
+function find_webpack_config_cached_deps () {
+  local KEY='bundler://webpack/config/needs'
+  <<<"${RESOLVE_CACHE["?$KEY"]}" grep -oPe '\S+' | sed -re 's~$~\t'"$KEY~"
 }
 
 
@@ -238,6 +254,7 @@ function find_manif_eslint_deps () {
 
   local ECNP='eslint-config-nodejs-pmb'
   case "$BUF" in
+    *"¶ eslint-config-jslint-compat-pmb "* | \
     *"¶ $ECNP "* )
       local PEER_DEPS="$ECNP/test/expectedPeerDependencies.js"
       PEER_DEPS="require('$PEER_DEPS').join('\n')"
@@ -567,7 +584,6 @@ function find_imports_in_files () {
   [ "$#" == 0 ] && return 0
   eval "$(init_resolve_cache)"
   local SBC_RGX='($bogus^'"$(printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"))"
-
   LANG=C grep -PHone '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
     )'(import|\W*from)\s.*$|require\([^()]+\)' -- "$@" \
     | tr "'" '"' | LANG=C sed -rf <(echo '
@@ -692,9 +708,9 @@ function guess_one_dep_type () {
   esac
 
   if [ -z "$DEP_VER" ]; then
-    case $'\n'"${RESOLVE_CACHE['?packer/alias_pkgnames']}"$'\n' in
-      *$'\n'"${REQ_MOD%%/*}"$'\n'* )
-        DEP_TYPE='packer-alias'
+    case " ${RESOLVE_CACHE['?bundler://alias_pkgnames']} " in
+      *" ${REQ_MOD%%/*} "* )
+        DEP_TYPE='bundler-alias'
         DEP_VER='*';;
     esac
   fi
@@ -751,9 +767,10 @@ function guess_one_dep_type () {
     esac
 
     case "$REQ_NORM_FEXT" in
+      bundler://* | \
+      manif://lint | \
       manif://scripts/*lint* | \
       manif://scripts/*test* | \
-      manif://lint | \
       . ) DEP_TYPE=devDep;;
       */* ) ;;    # files in subdirs are handled above
       # below: top-level files

@@ -1,5 +1,5 @@
 { "name": "guess-js-deps-bash",
-  "version": "0.1.62",
+  "version": "0.1.63",
   "description": "A bash attempt at npm-forgot: Guess JavaScript require() dependencies, detect their versions, compare with package.json.",
 
   "keywords": [
@@ -28,10 +28,11 @@
   "bin": { "guess-js-deps": "guess-js-deps.sh" },
   "scripts": { "test": "nodejs test/all.js" },
   "directories": { "test": "test" },
+  "eslintConfig": { "extends": "nodejs-pmb" },
 
   "dependencies": {},
   "devDependencies": {},
 
 
-  "npm vs. BOM = Unexpected token": "-*- coding: UTF-8 -*-"
+  "engines": { "npm": ">=7.0.0", "node": ">=16.0.0" }
 }

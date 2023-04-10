@@ -24,6 +24,7 @@ local AUTOGUESS_BUILD_UTIL_CMDS=(
   libdir-binlinks-cfg-linker-pmb
   npm-ci-utils-pmb
   uglifyjs
+  webpack
   yamllint
   yaml-lint-all-recursive
 
