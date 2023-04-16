@@ -21,18 +21,16 @@ function guess_js_deps () {
     devDep
     peerDep
     )
+  local -A CFG=(
+    [runmode]='cmp'
+    )
+  local POS_ARGN=( runmode )
+  local POS_ARGS=()
+  parse_cli_opts "$@" || return $?
 
-  local RUNMODE="$1"; shift
-  case "$RUNMODE" in
-    '..' | '../'* )
-      cd -- "$RUNMODE" # probably to where your package.json is.
-      RUNMODE="$1"
-      shift;;
-  esac
   local OUTPUT_MODE=( fail 'Unsupported output mode. This is a bug.' )
-  case "$RUNMODE" in
+  case "${CFG[runmode]}" in
     as-json ) OUTPUT_MODE=( dump_deps_as_json );;
-    '' | \
     cmp ) OUTPUT_MODE=( maybe_colorize_diff compare_deps_as_json );;
     upd ) OUTPUT_MODE=( update_manifest );;
     sym ) OUTPUT_MODE=( symlink_nonlocal_node_modules );;
@@ -56,10 +54,43 @@ function guess_js_deps () {
     tabulate-found )  OUTPUT_MODE=( 'fmt://tsv' );;
     tabulate-known )  tabulate_manifest_deps; return $?;;
     --func ) "$@"; return $?;;
-    * ) fail "unsupported runmode: $RUNMODE"; return 2;;
+    * ) fail "unsupported runmode: ${CFG[runmode]}"; return 2;;
   esac
 
   find_imports_in_project "${OUTPUT_MODE[@]}"
+}
+
+
+function parse_cli_opts () {
+  local OPT=
+  while [ "$#" -gt 0 ]; do
+    OPT="$1"; shift
+    # [ -n "$OPT" ] || continue
+    #case "${CFG[no-more-opts]}$OPT" in
+    case "$OPT" in
+      '' ) continue;;
+      '..' | '../'* ) cd -- "$OPT";; # probably to where your package.json is.
+      -- ) POS_ARGS+=( "$@" ); break;;
+      #-- ) CFG[no-more-opts]='%%--'; continue;;
+      --expect-no-changes | \
+      --maybe-no-imports | \
+      '' ) CFG["${OPT#--}"]=+;;
+      --*=* )
+        OPT="${OPT#--}"
+        CFG["${OPT%%=*}"]="${OPT#*=}";;
+      --help | \
+      -* )
+        local -fp "${FUNCNAME[0]}" | guess_bash_script_config_opts-pmb
+        [ "${OPT//-/}" == help ] && return 1
+        echo "E: $0, CLI: unsupported option: $OPT" >&2; return 1;;
+      * )
+        case "${POS_ARGN[0]}" in
+          '' ) echo "E: $0: unexpected positional argument" >&2; return 1;;
+          '+' ) POS_ARGS+=( "$OPT" );;
+          * ) CFG["${POS_ARGN[0]}"]="$OPT"; POS_ARGN=( "${POS_ARGN[@]:1}" );;
+        esac;;
+    esac
+  done
 }
 
 
@@ -70,8 +101,18 @@ function warn_no_args () {
 
 
 function maybe_colorize_diff () {
-  [ -z "$*" ] || exec < <("$@")
-  "${COLORIZE_DIFF:-cat}"
+  [ -n "$*" ] || return 0
+  if [ -n "$COLORIZE_DIFF" ]; then
+    exec > >("$COLORIZE_DIFF")
+  fi
+  local RV=
+  "$@"; RV=$?
+
+  # Wait for output to go through the coloring process before returning
+  # control to parent process. (Which might want to print something
+  # immediately, which might overlap.)
+  [ -z "$COLORIZE_DIFF" ] || sleep 0.2s
+  return "$RV"
 }
 
 
@@ -200,8 +241,16 @@ function find_imports_in_project () {
       | guess_unique_stdin_dep_types 1-3)
   progress 'done.'
 
-  [ -n "${IMPORTS[0]}" ] || return 3$(
-    fail "Unable to find any import()s/imports in package: $CWD_PKG_NAME")
+  local ERR=
+  if [ -z "${IMPORTS[0]}" ]; then
+    ERR="Unable to find any import()s/imports in package: $CWD_PKG_NAME"
+    if [ -n "${CFG[maybe-no-imports]}" ]; then
+      echo "D: $ERR"
+      return 0
+    fi
+    fail "$ERR"
+    return 3
+  fi
 
   if [ "${OUTPUT_MODE[0]}" == 'fmt://tsv' ]; then
     printf '%s\n' "${IMPORTS[@]}"
@@ -362,9 +411,15 @@ function compare_deps_as_json () {
   eval local -A DEP_OFFSETS="( $(find_dep_keys_line_numbers) )"
 
   local DEP_TYPE=
+  local CHANGES_IN_DEP_TYPES=
+
   for DEP_TYPE in "${KNOWN_DEP_TYPES[@]}"; do
     compare_deps_as_json__one_dep_type || return $?
   done
+
+  [ -z "$CHANGES_IN_DEP_TYPES" ] \
+    || [ -z "${CFG[expect-no-changes]}" ] || return 4$(
+    fail "Found unexpected changes! in:$CHANGES_IN_DEP_TYPES")
 }
 
 
@@ -376,6 +431,7 @@ function compare_deps_as_json__one_dep_type () {
     echo "D: no changes in ${DEP_TYPE}s"
     return 0
   fi
+  CHANGES_IN_DEP_TYPES+=" $DEP_TYPE"
 
   local EMPTY="${DEP_OFFSETS[$DEP_TYPE:empty]}"
   if [ -n "$VERBATIM_EMPTY_ORIG" -a -n "$EMPTY" ]; then
