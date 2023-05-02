@@ -69,7 +69,11 @@ function parse_cli_opts () {
     #case "${CFG[no-more-opts]}$OPT" in
     case "$OPT" in
       '' ) continue;;
-      '..' | '../'* ) cd -- "$OPT";; # probably to where your package.json is.
+
+      # Options to cd to where probably your package.json is:
+      '..' | '../'* ) cd -- "$OPT" || return $?;;
+      // ) cd -- "$(git rev-parse --show-toplevel)" || return $?;;
+
       -- ) POS_ARGS+=( "$@" ); break;;
       #-- ) CFG[no-more-opts]='%%--'; continue;;
       --expect-no-changes | \
@@ -172,7 +176,7 @@ function init_resolve_cache__webpack_cfg () {
 function init_resolve_cache__forced_custom () {
   local LIST=()
   readarray -t LIST < <(
-    nodejs -p 'var manif = require("./package.json"); JSON.stringify([
+    nodejs -p 'var manif = require("./'"$MANI_BFN"'"); JSON.stringify([
       manif.dependencies,
       manif.devDependencies,
     ], null, 2)' | sed -nrf <(echo '
@@ -231,6 +235,8 @@ function find_webpack_config_cached_deps () {
 
 function find_imports_in_project () {
   local THEN=( "$@" )
+  [ -f "$MANI_BFN" ] || return 4$(
+    echo "E: Flinch: Found no $MANI_BFN in $PWD." >&2)
   local CWD_PKG_NAME="$(guess_cwd_pkg_name)"
   local -A DEPS_BY_TYPE=()
   eval "$(init_resolve_cache)"
@@ -595,7 +601,7 @@ function node_resolve__manif () {
     * ) return 2;;
   esac
   local NDEF=$'^\n\nError [ERR_PACKAGE_PATH_NOT_EXPORTED]: Package subpath '$(
-    )"'./package.json'"' is not defined by "exports" in '
+    )"'./$MANI_BFN'"' is not defined by "exports" in '
   local FOUND=
   case "$BUF" in
     *"$NDEF"*$'\n at '* )
