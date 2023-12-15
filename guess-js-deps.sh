@@ -924,7 +924,7 @@ function symlink_nonlocal_node_modules () {
     LINK="$MOD_DIR$DEP_NAME"
     LDIR_ABS="$ABSPWD/$(dirname "$LINK")"
     [ "$(readlink -m -- "$LDIR_ABS")" == "$LDIR_ABS" ] || return 4$(
-      echo "E: flinching from stramhe path effects in $LDIR_ABS" >&2)
+      echo "E: flinching from strange path effects in $LDIR_ABS" >&2)
     [ "$LDIR_ABS" == "$M_RESO" ] && return 3$(
       echo "E: flinching from linking $M_RESO into itself" >&2)
     mkdir --parents --verbose -- "$LDIR_ABS"
