@@ -19,6 +19,7 @@ local AUTOGUESS_BUILD_UTIL_CMDS=(
   bower
   browserify
   demo-util-160404-test-demos
+  enveval2401-pmb
   eslint
   jslint
   libdir-binlinks-cfg-linker-pmb
