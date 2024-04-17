@@ -647,11 +647,14 @@ function find_imports_in_files () {
   eval "$(init_resolve_cache)"
   local SBC_RGX='($bogus^'"$(printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"))"
   LANG=C grep -PHone '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
-    )'(import|\W*from)\s.*$|require\([^()]+\)' -- "$@" \
+    )'(import|\W*from)\s.*$|.?require\([^()]+\)' -- "$@" \
     | tr "'" '"' | LANG=C sed -rf <(echo '
     s~\s+~ ~g
     s~^(\./|)([^: ]+):~\2\t~
     s~^(\S+\t[0-9]+:)\xEF\xBB\xBF~\1~
+    s~^(\S+\t[0-9]+:)\.(require)~\r~
+    s~^(\S+\t[0-9]+:).(require)~\1\2~
+    /\r/d
     ') | LANG=C sed -nrf <(echo '
     /\t1:#!/{
       s~^(\S+)\t1:#! *(/\S*\s*|)\b'"$SBC_RGX"'\b(\s.*|)$~\3\t\1~p
@@ -812,6 +815,7 @@ function guess_one_dep_type () {
   if [ "$DEP_TYPE" == dep ]; then
     SUBDIR="${REQ_FILE%%/*}"
     case "${SUBDIR%s}" in
+      benchmark | \
       build | \
       debug | \
       demo | \
