@@ -16,6 +16,10 @@ function guess_js_deps () {
   local DBGLV="${DEBUGLEVEL:-0}"
   local COLORIZE_DIFF="$(can_haz_cmd colordiff)"
   local MANI_BFN='package.json'
+
+  local SAFE_PLAIN_MODULE_ID_RGX='[a-z][a-z0-9_.-]*'
+  sanity_check_safe_plain_module_id_rgx || return $?
+
   local KNOWN_DEP_TYPES=(
     dep
     devDep
@@ -59,6 +63,42 @@ function guess_js_deps () {
   esac
 
   find_imports_in_project "${OUTPUT_MODE[@]}"
+}
+
+
+function sanity_check_safe_plain_module_id_rgx () {
+  # Validate that all aspects of this regexp work correctly with the local
+  # implementation of bash, sed and grep:
+  local RGX="$SAFE_PLAIN_MODULE_ID_RGX"
+  local ACCEPT=(
+    dom80
+    highlight.js
+    )
+  local ITEM=
+  for ITEM in "${ACCEPT[@]}"; do
+    [[ "$ITEM" =~ ^$RGX$ ]]
+    [ "$?:${#BASH_REMATCH[@]}:${BASH_REMATCH[*]}" == "0:1:$ITEM" ] ||
+      return 4$(echo E: $FUNCNAME: "bash should have accepted '$ITEM'" >&2)
+    [ "$(grep -xPe "$RGX" <<<"$ITEM")" == "$ITEM" ] ||
+      return 4$(echo E: $FUNCNAME: "grep should have accepted '$ITEM'" >&2)
+    [ "$(sed -re "s~$RGX~((ok))~g" <<<"[$ITEM]")" == "[((ok))]" ] ||
+      return 4$(echo E: $FUNCNAME: "sed should have accepted '$ITEM'" >&2)
+  done
+
+  local DENY=(
+    dom80/
+    # döm80 døm80 # meh: bash is really stubborn about umlauts in A-Za-z.
+    dom∞
+    highlight.js/
+    )
+  for ITEM in "${DENY[@]}"; do
+    [[ "$ITEM" =~ ^$RGX$ ]] && return 4$(
+      echo E: $FUNCNAME: "bash should have denied '$ITEM'" >&2)
+    [ -z "$(grep -xPe "$RGX" <<<"$ITEM")" ] ||
+      return 4$(echo E: $FUNCNAME: "grep should have denied '$ITEM'" >&2)
+    [ "$(sed -re "s~$RGX~((ok))~g" <<<"[$ITEM]")" != '[((ok))]' ] ||
+      return 4$(echo E: $FUNCNAME: "sed should have denied '$ITEM'" >&2)
+  done
 }
 
 
@@ -681,9 +721,11 @@ function remove_paths_from_module_ids () {
   # Actual subpath is optional: Trailing slash notation is used in
   # ubborg-planner-pmb's slashableImport.
 
-  sed -rf <(echo '
-    s~^((@[a-z0-9_-]+/|)([a-z0-9_-]+))'"$SUBPATH_RGX"'(\t|$)~\1\4~
-    ') -- "$@" || return $?
+  local SED='
+    s~^((@æ/|)(æ))'"$SUBPATH_RGX"'(\t|$)~\1\4~
+    '
+  SED="${SED//æ/$SAFE_PLAIN_MODULE_ID_RGX}"
+  sed -rf <(echo "$SED") -- "$@" || return $?
 }
 
 
@@ -700,11 +742,11 @@ function find_simple_html_script_deps () {
   local SRC_FN= TAGS= DEP=
   local Q='"'
   local MODBASE_RGX='(\.*/)*node_modules/'
-  local SRC_ATTR_RX=' src="'"$MODBASE_RGX"'[^"]+"'
+  local SRC_ATTR_RX=' (src|href)="'"$MODBASE_RGX"'[^"]+"'
   for SRC_FN in "${LIST[@]}"; do
     SRC_FN="${SRC_FN#\./}"
     readarray -t LIST < <(<"$SRC_FN" tr -s '\r\n\t ' ' ' \
-      | grep -oPe '<script\b[^<>]+>' | grep -oPe "$SRC_ATTR_RX" \
+      | grep -oPe '<(script|link)\b[^<>]+>' | grep -oPe "$SRC_ATTR_RX" \
       | cut -d "$Q" -sf 2 | sed -re "s~^$MODBASE_RGX~~
       " | remove_paths_from_module_ids)
     for DEP in "${LIST[@]}"; do
@@ -739,7 +781,6 @@ function safe_pkg_names () {
     return $?
   fi
   local LN= PKG= ORG=
-  local ID_RGX='^[a-z][a-z0-9_.-]*$'
   local RV=3
   while read -r LN; do
     PKG="$LN"
@@ -752,8 +793,8 @@ function safe_pkg_names () {
         ORG="${ORG#\@}"
         ;;
     esac
-    [[ "$PKG" =~ $ID_RGX ]] || continue
-    [ -z "$ORG" ] || [[ "$ORG" =~ $ID_RGX ]] || continue
+    [[ "$PKG" =~ ^$SAFE_PLAIN_MODULE_ID_RGX$ ]] || continue
+    [ -z "$ORG" ] || [[ "$ORG" =~ ^$SAFE_PLAIN_MODULE_ID_RGX$ ]] || continue
     echo "$LN"
     RV=0
   done
