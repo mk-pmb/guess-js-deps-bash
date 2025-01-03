@@ -24,9 +24,10 @@ function guess_js_deps () {
   local -A CFG=(
     [runmode]='cmp'
     )
-  local POS_ARGN=( runmode )
+  local POS_ARGN=( runmode + )
   local POS_ARGS=()
   parse_cli_opts "$@" || return $?
+  set -- "${POS_ARGS[@]}"
 
   local OUTPUT_MODE=( fail 'Unsupported output mode. This is a bug.' )
   case "${CFG[runmode]}" in
