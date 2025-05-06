@@ -235,14 +235,26 @@ function init_resolve_cache__forced_custom () {
 
 
 function find_scannable_files_in_project () {
-  local FF=(
-    -type f
-    '(' -name '*.js'
-        -o -name '*.mjs'
-        -o -name '*.jsm'
-        -o -name '*.html'
-        ')'
+  local SCAN_FEXTS=(
+    html
+    js
+    jsm
+    mjs
     )
+  local VAL=
+  if [ -f .git/config -o -f .git ]; then
+    VAL="${SCAN_FEXTS[*]}"
+    VAL="${VAL// /'|'}"
+    # Let git deal with checking worktrees, ignored directories etc.
+    ( git grep -lPe .
+      git status --porcelain -uall | cut --bytes=4-
+    ) | grep -Pe '\.('"$VAL"')$' | LANG=C sort --version-sort --unique | grep .
+    return $?
+  fi
+
+  local FF=( -type f '(' -false )
+  for VAL in "${SCAN_FEXTS[@]}"; do FF+=( -o -name "*.$VAL" ); done
+  FF+=( ')' )
   fastfind "${FF[@]}" || return $?
 }
 
