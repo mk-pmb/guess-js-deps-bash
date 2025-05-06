@@ -870,6 +870,7 @@ function guess_one_dep_type () {
       #     as well as any subdir.
 
       *[.-]test.%JS | \
+      */.babelrc | \
       */webpack.config.%JS | \
       . ) DEP_TYPE=devDep;;
     esac
