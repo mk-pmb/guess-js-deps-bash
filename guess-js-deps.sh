@@ -49,7 +49,7 @@ function guess_js_deps () {
     why ) debug_why "$@"; return $?;;
     manif ) read_json_subtree "$@"; return $?;;
 
-    list-files )      find_scannable_files_in_project; return $?;;
+    list-js-files )   find_project_files_with_potential_js_code; return $?;;
     scan-all )        scan_all_scannable_files_in_project; return $?;;
     scan-imports )    warn_no_args find_imports_in_files "$@"; return $?;;
     scan-known )      scan_manifest_deps; return $?;;
@@ -234,16 +234,46 @@ function init_resolve_cache__forced_custom () {
 }
 
 
-function find_scannable_files_in_project () {
-  local FF=(
-    -type f
-    '(' -name '*.js'
-        -o -name '*.mjs'
-        -o -name '*.jsm'
-        -o -name '*.html'
-        ')'
+function find_project_files_with_potential_js_code () {
+  local JS_FEXTS=(
+    html
+    js
+    jsm
+    mjs
     )
-  fastfind "${FF[@]}" || return $?
+  find_project_files_with_fexts "${JS_FEXTS[@]}" || return $?
+}
+
+
+function find_project_files_with_fexts () {
+  local VAL=
+  if [ -f .git/config -o -f .git ]; then
+    VAL="$*"
+    VAL="${VAL// /'|'}"
+    # Let git deal with checking worktrees, ignored directories etc.
+    ( git grep -lPe .
+      git status --porcelain -uall | cut --bytes=4-
+    ) | grep -Pe '\.('"$VAL"')$' | LANG=C sort --version-sort --unique | grep .
+    return $?
+  fi
+
+  local FIND=(
+    -xdev
+
+    # Prunes:
+    '(' -false
+      -o -name .git
+      -o -name .svn
+      -o -name node_modules
+      -o -name bower_components
+    ')' -prune ','
+
+    # Files we want:
+    -type f '(' -false )
+  for VAL in "$@"; do FIND+=( -o -name "*.$VAL" ); done
+  FIND+=( ')' )
+  find "${FIND[@]}"
+  return $?
 }
 
 
@@ -255,7 +285,7 @@ function scan_all_scannable_files_in_project () {
   fi
 
   progress 'I: Searching for JavaScript files: '
-  readarray -t IMPORTS < <(find_scannable_files_in_project)
+  readarray -t IMPORTS < <(find_project_files_with_potential_js_code)
   progress "found ${#IMPORTS[@]}"
 
   progress 'I: Searching for require()s/imports: '
@@ -316,7 +346,7 @@ function find_imports_in_project () {
 
 function find_manif_script_deps () {
   local SCRIPTS=()
-  readarray -t SCRIPTS < <(fastfind -name '*.sh')
+  readarray -t SCRIPTS < <(find_project_files_with_fexts  sh)
   ( </dev/null grep -HvPe '^\s*(#[^!]|$)' -- "${SCRIPTS[@]}"
     read_json_subtree '' .scripts | sed -nre '
       s~^\s*"([^"]+)": "~\v<manif>scripts/\1 ~p'
@@ -671,18 +701,6 @@ function node_detect_manif_version () {
 }
 
 
-function fastfind () {
-  local PRUNES=( '(' -false
-    -o -name .git
-    -o -name .svn
-    -o -name node_modules
-    -o -name bower_components
-    ')' -prune ',' )
-  find -xdev "${PRUNES[@]}" "$@"
-  return $?
-}
-
-
 function find_imports_in_files () {
   [ "$#" == 0 ] && return 0
   eval "$(init_resolve_cache)"
@@ -731,12 +749,7 @@ function remove_paths_from_module_ids () {
 
 function find_simple_html_script_deps () {
   progress 'I: Searching for HTML files: ' >&2
-  local LIST=(
-    -type f
-    '(' -name '*.html'
-        ')'
-    )
-  readarray -t LIST < <(fastfind "${LIST[@]}")
+  readarray -t LIST < <(find_project_files_with_fexts html)
   progress "found ${#LIST[@]}" >&2
   [ "${#LIST[@]}" == 0 ] && return 0
   local SRC_FN= TAGS= DEP=
