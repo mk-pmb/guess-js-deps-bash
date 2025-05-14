@@ -7,11 +7,11 @@ function guess_js_deps () {
 
   local SELFPATH="$(readlink -m "$BASH_SOURCE"/..)"
   #cd -- "$SELFPATH" || return $?
-  source "$SELFPATH"/lib_dict_util.sh --lib || exit $?
-  source "$SELFPATH"/lib_path_util.sh --lib || exit $?
+  source -- "$SELFPATH"/lib_dict_util.sh --lib || exit $?
+  source -- "$SELFPATH"/lib_path_util.sh --lib || exit $?
 
   # import AUTOGUESS_SHEBANG_CMDS and AUTOGUESS_BUILD_UTIL_CMDS:
-  source "$SELFPATH"/autoguess_config.txt --lib || exit $?
+  source -- "$SELFPATH"/autoguess_config.txt --lib || exit $?
 
   local DBGLV="${DEBUGLEVEL:-0}"
   local COLORIZE_DIFF="$(can_haz_cmd colordiff)"
