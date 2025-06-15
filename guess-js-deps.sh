@@ -706,7 +706,7 @@ function find_imports_in_files () {
   eval "$(init_resolve_cache)"
   local SBC_RGX='($bogus^'"$(printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"))"
   LANG=C grep -PHone '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
-    )'(import|\W*from)\s.*$|.?require\([^()]+\)' -- "$@" \
+    )'(import|export|\W*from)\s.*$|.?require\([^()]+\)' -- "$@" \
     | tr "'" '"' | LANG=C sed -rf <(echo '
     s~\s+~ ~g
     s~^(\./|)([^: ]+):~\2\t~
@@ -720,6 +720,7 @@ function find_imports_in_files () {
     }
     s~\t[0-9]+:~\t~  # other match types work w/o line numbers.
     s~^(\S+)\trequire\("([^"]+)"\)$~\2\t\1~p
+    s~^(\S+\s+)export (\S+|\{[ -z]+\}) from ~\1import ~
     /^\S+\s+import/{
       /"/!{$!N
         s~^.*\n(\./|)([^: ]+):~\2 ~
