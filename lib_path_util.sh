@@ -4,13 +4,15 @@
 
 function path_util__common_prefix  () {
   local A="$1"; shift
-  local B="$1"; shift
-  while [[ "$B" == */ ]]; do B="${B%/}"; done
+  local B="$(path_util__trim_trailing_slashes "$1")"; shift
   while [ -n "$A" ]; do
     case "$B" in
       "$A" | "$A"/* ) break;;
     esac
-    A="${A%/*}"
+    case "$A" in
+      */* ) A="${A%/*}";;
+      * ) return 3;;
+    esac
   done
   [ -n "$A" ] || return 3
   echo "$A"
@@ -18,9 +20,15 @@ function path_util__common_prefix  () {
 }
 
 
+function path_util__trim_trailing_slashes () {
+  while [ "$1" != / ] && [[ "$1" == */ ]]; do set -- "${1%/}"; done
+  echo "$1"
+}
+
+
 function path_util__relativize_sanely () {
-  local DEST="$1"; shift
-  local BASE="$1"; shift
+  local DEST="$(path_util__trim_trailing_slashes "$1")"; shift
+  local BASE="$(path_util__trim_trailing_slashes "$1")"; shift
   local ABS_LCPP="$(path_util__common_prefix "$BASE" "$DEST")"
   # echo "D: ABS_LCPP='$ABS_LCPP'" >&2
   case "$ABS_LCPP" in
@@ -29,10 +37,17 @@ function path_util__relativize_sanely () {
     /mnt | \
     '' ) return 3;;
   esac
-  BASE="${BASE#$ABS_LCPP/}"
+  [ "$DEST" != "$ABS_LCPP" ] || DEST=
   DEST="${DEST#$ABS_LCPP/}"
-  local UP="${BASE//[^\/]/}/"
-  UP="${UP//\//..\/}"
+  [ "$BASE" != "$ABS_LCPP" ] || BASE=
+  BASE="${BASE#$ABS_LCPP/}"
+
+  # For proper "up" counting by slashes, every path segment in BASE must
+  # end with a slash. So if there are any, we need to add the trailing
+  # slash for the last segment:
+  [ -z "$BASE" ] || BASE+=/
+  local UP="${BASE//[^\/]/}"
+  UP="${UP//'/'/'../'}"
   # echo "D: base='$BASE' up='$UP' sub='$DEST'" >&2
   echo "$UP$DEST"
 }
