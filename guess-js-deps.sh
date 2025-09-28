@@ -962,16 +962,17 @@ function symlink_nonlocal_node_modules () {
   readarray -t DEP_LIST < <( <<<"${DEP_LIST[0]}" cut -sf 1 | csort -u )
   [ -n "${DEP_LIST[*]}" ] || return 0
 
-  local DEP_NAME= M_RESO=
   local ABSPWD="$(readlink -m .)"
   local MOD_DIR='node_modules/'
   local MOD_SEARCH_DIRS=(
+    "$MOD_DIR"{.,}@/[A-Za-z0-9_]*/
     "$HOME/.$MOD_DIR"
     "$HOME/lib/$MOD_DIR"
     "$HOME"
     )
-  local DEST= LINK= LDIR_ABS=
+  local DEST= LINK= LDIR_ABS= LDIR= REL=
   local DEP_MISS=()
+  local DEP_NAME= M_RESO=
   for DEP_NAME in "${DEP_LIST[@]}"; do
     [ -f "$MOD_DIR$DEP_NAME/$MANI_BFN" ] && continue
     # if not in local node_modules, ascend:
@@ -984,23 +985,36 @@ function symlink_nonlocal_node_modules () {
     M_RESO="${M_RESO%/$MANI_BFN}"
 
     LINK="$MOD_DIR$DEP_NAME"
-    LDIR_ABS="$ABSPWD/$(dirname "$LINK")"
+    LDIR_ABS="$ABSPWD/$(dirname -- "$LINK")"
     [ "$(readlink -m -- "$LDIR_ABS")" == "$LDIR_ABS" ] || return 4$(
       echo "E: flinching from strange path effects in $LDIR_ABS" >&2)
     [ "$LDIR_ABS" == "$M_RESO" ] && return 3$(
       echo "E: flinching from linking $M_RESO into itself" >&2)
     mkdir --parents --verbose -- "$LDIR_ABS"
     DEST="$(path_util__relativize_sanely "$M_RESO" "$LDIR_ABS")"
+    # echo D: "DEST relativize_sanely '$M_RESO' '$LDIR_ABS' # '$DEST'" >&2
+    # printf "D: %s='%s'\n" link "$LINK" dest "$DEST" reso "$M_RESO" >&2
     if [ -z "$DEST" ]; then
       for DEST in "${MOD_SEARCH_DIRS[@]}"; do
+        [ -d "$DEST" ] || continue
         DEST="${DEST%/}/$DEP_NAME"
-        [ "$(readlink -m -- "$DEST")" == "$M_RESO" ] && break
+        [ "$DEST" -ef "$M_RESO" ] && break
         DEST=
       done
     fi
     [ -n "$DEST" ] || DEST="$M_RESO"
     # printf "D: %s='%s'\n" link "$LINK" dest "$DEST" reso "$M_RESO" >&2
-    # echo >&2 D:
+
+    if [ "${DEST:0:1}" != / ]; then
+      # We have a relative path, but `ln --relative` isn't very smart
+      # on Ubuntu focal:
+      # ln --relative -- node_modules/@/system/vtry node_modules/vtry
+      # creates a link to '../../../../../moutpoint/js/node_modules/vtry'
+      # i.e. the longest common prefix it could find was via /mnt.
+      # whereas we would want `@/system/vtry`.
+      REL="$(path_util__relativize_sanely "$DEST" "$(dirname -- "$LINK")")"
+      [ -z "$REL" ] || DEST="$REL"
+    fi
     ln --verbose --symbolic --no-target-directory \
       -- "$DEST" "$LINK" || return $?
   done
