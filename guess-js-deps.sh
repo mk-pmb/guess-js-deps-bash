@@ -886,6 +886,7 @@ function guess_one_dep_type () {
       *[.-]test.%JS | \
       */.babelrc | \
       */test/* | \
+      */vite.config.%JS | \
       */webpack.config.%JS | \
       . ) DEP_TYPE=devDep;;
     esac
