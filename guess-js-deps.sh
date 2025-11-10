@@ -885,6 +885,8 @@ function guess_one_dep_type () {
 
       *[.-]test.%JS | \
       */.babelrc | \
+      */[._]build.%JS | \
+      */[._]bundle.%JS | \
       */test/* | \
       */vite.config.%JS | \
       */webpack.config.%JS | \
