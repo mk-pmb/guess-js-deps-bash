@@ -824,6 +824,7 @@ function guess_one_dep_type () {
   local DEP_VER=
 
   case "$REQ_MOD" in
+    node:* ) DEP_TYPE='built-in'; DEP_VER='*';;
     "$CWD_PKG_NAME" ) DEP_TYPE='self-ref'; DEP_VER='*';;
     . | ./* | .. | ../* ) DEP_TYPE='relPath'; DEP_VER='*';;
   esac
