@@ -2,6 +2,7 @@
 # -*- coding: UTF-8, tab-width: 2 -*-
 
 s~^(demo-util-160404)-test-demos(\t)~lib-\1\2~
+s~^(elp)(\t)~eslint-pretty-pmb\2~
 s~^(uglify)(js\t)~\1-\2~
+s~^(webpack)(\t)~\1-cli\2~
 s~^(yaml)(lint\t)~\1-\2~
-s~^(webpack)~\1-cli~
