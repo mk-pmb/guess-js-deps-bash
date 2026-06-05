@@ -79,9 +79,9 @@ function sanity_check_safe_plain_module_id_rgx () {
     [[ "$ITEM" =~ ^$RGX$ ]]
     [ "$?:${#BASH_REMATCH[@]}:${BASH_REMATCH[*]}" == "0:1:$ITEM" ] ||
       return 4$(echo E: $FUNCNAME: "bash should have accepted '$ITEM'" >&2)
-    [ "$(grep -xPe "$RGX" <<<"$ITEM")" == "$ITEM" ] ||
+    [ "$(echo "$ITEM" | grep -xPe "$RGX")" == "$ITEM" ] ||
       return 4$(echo E: $FUNCNAME: "grep should have accepted '$ITEM'" >&2)
-    [ "$(sed -re "s~$RGX~((ok))~g" <<<"[$ITEM]")" == "[((ok))]" ] ||
+    [ "$(echo "[$ITEM]" | sed -re "s~$RGX~((ok))~g")" == "[((ok))]" ] ||
       return 4$(echo E: $FUNCNAME: "sed should have accepted '$ITEM'" >&2)
   done
 
@@ -94,9 +94,9 @@ function sanity_check_safe_plain_module_id_rgx () {
   for ITEM in "${DENY[@]}"; do
     [[ "$ITEM" =~ ^$RGX$ ]] && return 4$(
       echo E: $FUNCNAME: "bash should have denied '$ITEM'" >&2)
-    [ -z "$(grep -xPe "$RGX" <<<"$ITEM")" ] ||
+    [ -z "$(echo "$ITEM" | grep -xPe "$RGX")" ] ||
       return 4$(echo E: $FUNCNAME: "grep should have denied '$ITEM'" >&2)
-    [ "$(sed -re "s~$RGX~((ok))~g" <<<"[$ITEM]")" != '[((ok))]' ] ||
+    [ "$(echo "[$ITEM]" | sed -re "s~$RGX~((ok))~g")" != '[((ok))]' ] ||
       return 4$(echo E: $FUNCNAME: "sed should have denied '$ITEM'" >&2)
   done
 }
@@ -173,7 +173,7 @@ function debug_why () {
   case "$1" in
     -* ) OPT=( "$@" );;
     * )
-      KWD="$(<<<"$*" grep -Pe '\S+')"
+      KWD="$(echo "$*" | grep -Pe '\S+')"
       [ -n "$KWD" ] || return 4$(echo "E: $FUNCNAME: Empty keywords" >&2)
       tty --silent <&1 && OPT+=( --color=always )
       OPT+=( -Fie "$KWD" )
@@ -300,7 +300,7 @@ function scan_all_scannable_files_in_project () {
 
 function find_webpack_config_cached_deps () {
   local KEY='bundler://webpack/config/needs'
-  <<<"${RESOLVE_CACHE["?$KEY"]}" grep -oPe '\S+' | sed -re 's~$~\t'"$KEY~"
+  echo "${RESOLVE_CACHE["?$KEY"]}" | grep -oPe '\S+' | sed -re 's~$~\t'"$KEY~"
 }
 
 
@@ -335,8 +335,8 @@ function find_imports_in_project () {
   fi
   dict_split_tsv_by_1st_column DEPS_BY_TYPE "${IMPORTS[@]}"
   merge_redundant_devdeps
-  progress "found $(<<<"${DEPS_BY_TYPE[dep]}" grep . | wc -l) deps" \
-    "and $(<<<"${DEPS_BY_TYPE[devDep]}" grep . | wc -l) devDeps."
+  progress "found $(echo "${DEPS_BY_TYPE[dep]}" | grep . | wc -l) deps" \
+    "and $(echo "${DEPS_BY_TYPE[devDep]}" | grep . | wc -l) devDeps."
   [ "$DBGLV" -ge 2 ] && dump_dict DEPS_BY_TYPE | sed -re '
     s~^\S+~Found: &~;s~^~D: ~'
 
@@ -388,11 +388,12 @@ function find_manif_eslint_deps () {
       [ -n "$PEER_DEPS" ] || return 4$(
         echo "E: Failed to detect peer dependencies of $ECNP" >&2)
       DEPS+=$'\n'"$PEER_DEPS"
-      <<<"$SCRIPTS" grep -qoPe '^\s*"elp[ \&"]' && DEPS+=$'\neslint-pretty-pmb'
+      echo "$SCRIPTS" | grep -qoPe '^\s*"elp[ \&"]' &&
+        DEPS+=$'\neslint-pretty-pmb'
       ;;
   esac
 
-  <<<"$DEPS" sed -re 's~\S$~&\tmanif://lint~'
+  echo "$DEPS" | sed -re 's~\S$~&\tmanif://lint~'
 }
 
 
@@ -438,7 +439,7 @@ function dump_deps_as_json () {
   local DEP_TYPE=
   for DEP_TYPE in "$@"; do
     printf '"%sendencies": ' "$DEP_TYPE"
-    <<<"${DEPS_BY_TYPE[$DEP_TYPE]}" sed -re '
+    echo "${DEPS_BY_TYPE[$DEP_TYPE]}" | sed -re '
       1{${s~^$~{},~}}
       /\t/{
         s~^~  "~
@@ -541,7 +542,7 @@ function update_manifest () {
   # redundant in bash but it's too subtle a bug to risk it.
   P_DIFF="${P_DIFF%:}"
   P_DIFF="${P_DIFF%$'\n'}"
-  maybe_colorize_diff <<<"$P_DIFF"
+  echo "$P_DIFF" | maybe_colorize_diff
 
   local P_OPTS=(
     --batch
@@ -557,9 +558,8 @@ function update_manifest () {
 
   local P_HEAD=$'--- old/%\n+++ new/%\n'
   P_HEAD="${P_HEAD//%/$MANI_BFN}"
-  patch "${P_OPTS[@]}" "$MANI_BFN" <(<<<"$P_HEAD$P_DIFF" sed -re '
-    /^Files .* are identical\.?$/d
-    ') 2>&1 | sed -re '
+  patch "${P_OPTS[@]}" "$MANI_BFN" <(echo "$P_HEAD$P_DIFF" |
+    sed -re '/^Files .* are identical\.?$/d') |& sed -rf <(echo '
     1{
       : buffer
         /\n[Pp]atching /{s~^.*\n~~;b copy}
@@ -569,7 +569,7 @@ function update_manifest () {
     }
     /\.{3}\s*$/{N;s~\.{3,}~…~g;s~\s*\n~ ~}
     /^[Dd]one\.?$/d
-    '
+    ')
   return $?
 }
 
@@ -645,7 +645,7 @@ function read_json_subtree () {
 
 
 function fail () { echo "E: $*" >&2; return 2; }
-function lncnt () { [ -n "$1" ] && wc -l <<<"$1"; }
+function lncnt () { [ -n "$1" ] && { echo "$1" | wc -l; }; }
 
 
 function node_resolve () {
@@ -694,10 +694,8 @@ function node_detect_manif_version () {
   local MANI="$1/$MANI_BFN"
   local RESO="$(node_resolve "$MANI")"
   [ -f "$RESO" ] || return 4$(echo "E: $FUNCNAME: Cannot find $MANI" >&2)
-  RESO="$RESO" nodejs <<<'
-    var m = require(process.env.RESO), iu = (m.npmInstallUrl || false);
-    console.log(iu.default
-      || m.version);'
+  echo 'var m = require(process.env.RESO), iu = (m.npmInstallUrl || false);' \
+    'console.log(iu.default || m.version);' | RESO="$RESO" nodejs
 }
 
 
@@ -952,7 +950,8 @@ function merge_redundant_devdeps () {
   # Thus we can just eliminate devDeps that are also deps or peerDeps:
   local EXCLUDE="${DEPS_BY_TYPE[dep]}"
   EXCLUDE+=$'\n'"${DEPS_BY_TYPE[peerDep]}"
-  DEPS_BY_TYPE[devDep]="$(<<<"${DEPS_BY_TYPE[devDep]}" grep -vxFe "$EXCLUDE")"
+  DEPS_BY_TYPE[devDep]="$(echo "${DEPS_BY_TYPE[devDep]}" |
+    grep -vxFe "$EXCLUDE")"
   return 0
 }
 
@@ -963,7 +962,7 @@ function symlink_nonlocal_node_modules () {
   for DEP_TYPE in "${KNOWN_DEP_TYPES[@]}"; do
     DEP_LIST[0]+="${DEPS_BY_TYPE[$DEP_TYPE]}"$'\n'
   done
-  readarray -t DEP_LIST < <( <<<"${DEP_LIST[0]}" cut -sf 1 | csort -u )
+  readarray -t DEP_LIST < <( echo "${DEP_LIST[0]}" | cut -sf 1 | csort -u )
   [ -n "${DEP_LIST[*]}" ] || return 0
 
   local ABSPWD="$(readlink -m .)"
