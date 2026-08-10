@@ -702,10 +702,16 @@ function node_detect_manif_version () {
 function find_imports_in_files () {
   [ "$#" == 0 ] && return 0
   eval "$(init_resolve_cache)"
+  local IMP_RGX='#!.*$'
+  IMP_RGX+='|^(\xEF\xBB\xBF|)\s*(import|export|\W*from)'
+  IMP_RGX+='($|\s.*$|.?require\([^()]+\))'
   local SBC_RGX='($bogus^'"$(printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"))"
-  LANG=C grep -PHone '#!.*$|^(\xEF\xBB\xBF|)\s*'$(
-    )'(import|export|\W*from)\s.*$|.?require\([^()]+\)' -- "$@" \
-    | tr "'" '"' | LANG=C sed -rf <(echo '
+  LANG=C grep -PHone "$IMP_RGX" -- "$@" |
+    # grep cannot use -A 1 with -o, so if an import line ends with "from"
+    # (i.e. spans two lines), we need to add the next line.
+    find_imports_in_files__add_import_from_next_lines |
+    tr "'" '"' |
+    LANG=C sed -rf <(echo '
     s~\s+~ ~g
     s~^(\./|)([^: ]+):~\2\t~
     s~^(\S+\t[0-9]+:)\xEF\xBB\xBF~\1~
@@ -728,6 +734,24 @@ function find_imports_in_files () {
       s~^(\S+) (.* |)from "([^"]+)";?\s*(/[/*].*|)$~\3\t\1~p
     }
     ') | remove_paths_from_module_ids
+}
+
+
+function find_imports_in_files__add_import_from_next_lines () {
+  local BUF= SRC= LNUM= ADD=
+  while IFS= read -r BUF; do
+    SRC="${BUF%%:*}"; BUF="${BUF#*:}"
+    LNUM="${BUF%%:*}"; BUF="${BUF#*:}"
+    case "$BUF" in
+      'import '*' from' )
+        ADD="$(sed -nre $(( LNUM + 1 ))p -- "$SRC")"
+        [ -n "$ADD" ] || echo W: >&2 \
+          "Failed to read continuation for line $LNUM from: $SRC"
+        # echo "D: continuation for line $LNUM from $SRC: $ADD" >&2
+        BUF+=" $ADD";;
+    esac
+    echo "$SRC:$LNUM:$BUF"
+  done
 }
 
 
