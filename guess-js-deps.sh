@@ -703,8 +703,8 @@ function find_imports_in_files () {
   [ "$#" == 0 ] && return 0
   eval "$(init_resolve_cache)"
   local IMP_RGX='#!.*$'
-  IMP_RGX+='|^(\xEF\xBB\xBF|)\s*(import|export|\W*from)'
-  IMP_RGX+='($|\s.*$|.?require\([^()]+\))'
+  IMP_RGX+='|^(\xEF\xBB\xBF|)\s*(import|export|\W*from)($|\s.*$)'
+  IMP_RGX+='|\.?require\([^()]+\)'
   local SBC_RGX='($bogus^'"$(printf '|%s' "${AUTOGUESS_SHEBANG_CMDS[@]}"))"
   LANG=C grep -PHone "$IMP_RGX" -- "$@" |
     # grep cannot use -A 1 with -o, so if an import line ends with "from"
@@ -716,7 +716,7 @@ function find_imports_in_files () {
     s~^(\./|)([^: ]+):~\2\t~
     s~^(\S+\t[0-9]+:)\xEF\xBB\xBF~\1~
     s~^(\S+\t[0-9]+:)\.(require)~\r~
-    s~^(\S+\t[0-9]+:).(require)~\1\2~
+    s~^(\S+\t[0-9]+:)(require)~\1\2~
     /\r/d
     ') | LANG=C sed -nrf <(echo '
     /\t1:#!/{
