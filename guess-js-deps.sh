@@ -694,6 +694,10 @@ function node_detect_manif_version () {
   local MANI="$1/$MANI_BFN"
   local RESO="$(node_resolve "$MANI")"
   [ -f "$RESO" ] || return 4$(echo "E: $FUNCNAME: Cannot find $MANI" >&2)
+
+  # Some modules are not meant to be published to npm. We can still manage
+  # them as URL dependencies if their `package.json` gives a top-level
+  # field `npmInstallUrl`:
   echo 'var m = require(process.env.RESO), iu = (m.npmInstallUrl || false);' \
     'console.log(iu.default || m.version);' | RESO="$RESO" nodejs
 }
@@ -951,8 +955,15 @@ function guess_unique_stdin_dep_types () {
 
 function guess_dep_types () {
   eval "$(init_resolve_cache)"
+
+  # If your project gives false positives, e.g. because you mention a tool
+  # only in docs examples but your project doesn't really use that tool by
+  # default, add a top-level field `spuriousDependencies` (array of strings)
+  # to your `package.json` where you list package names that your project
+  # really does NOT need.
   local SPURIOUS=$'\n'"$(read_json_subtree '' .spuriousDependencies \
     | sed -nre 's~^ *"(\S+)",?$~\1~p')"$'\n'
+
   local REQ_MOD=
   local REQ_FILE=
   for REQ_MOD in "$@"; do
