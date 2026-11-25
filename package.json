@@ -1,5 +1,5 @@
 { "name": "guess-js-deps-bash",
-  "version": "0.1.78",
+  "version": "0.1.79",
   "description": "A bash attempt at npm-forgot: Guess JavaScript require() dependencies, detect their versions, compare with package.json.",
 
   "keywords": [
@@ -32,9 +32,9 @@
 
   "dependencies": {},
   "devDependencies": {
-    "eslint-config-nodejs-pmb": "^0.3.10",
+    "eslint-config-nodejs-pmb": "^0.3.16",
     "eslint-plugin-json-light-pmb": "^1.0.7",
-    "eslint-plugin-n": "^17.16.2",
+    "eslint-plugin-n": "^18.6.0",
     "eslint-pretty-pmb": "^1.0.7"
   },
 
