@@ -24,7 +24,7 @@
 
   "private": false, "license": "ISC",
 
-  "main": "capture-bash.js",
+  "main": "index.js",
   "bin": { "guess-js-deps": "guess-js-deps.sh" },
   "scripts": { "test": "elp && guess-js-deps cmp --expect-no-changes" },
   "directories": { "test": "test" },
